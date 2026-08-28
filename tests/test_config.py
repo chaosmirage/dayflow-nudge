@@ -73,6 +73,22 @@ class PollSecondsTest(unittest.TestCase):
                 )
 
 
+class StyleTest(unittest.TestCase):
+    def test_the_window_surface_is_the_default(self):
+        self.assertEqual(load_config({}).style, "window")
+
+    def test_missing_style_means_the_window(self):
+        self.assertEqual(load_config({}).style, "window")
+
+    def test_the_notification_token_selects_notifications(self):
+        config = load_config({"DFN_STYLE": "notification"})
+        self.assertEqual(config.style, "notification")
+
+    def test_a_malformed_style_falls_back_to_the_window(self):
+        config = load_config({"DFN_STYLE": "banner"})
+        self.assertEqual(config.style, "window")
+
+
 class VariableSurfaceTest(unittest.TestCase):
     def test_only_the_dfn_variables_are_consulted(self):
         strict = _OnlyDfnEnv({"DFN_POLL_SECONDS": "45"})

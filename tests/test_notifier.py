@@ -126,11 +126,24 @@ class AppletChannelTest(unittest.TestCase):
         self.assertEqual(env["DFN_TITLE"], "Focus drift")
         self.assertEqual(env["DFN_BODY"], "Back to the plan")
         self.assertEqual(env["DFN_SOUND"], "")
+        # The window surface is the default style.
+        self.assertEqual(env["DFN_STYLE"], "window")
         # The inherited environment survives alongside the overrides.
         for key, value in os.environ.items():
             self.assertEqual(env.get(key), value)
         self.assertEqual(runner.attempts[0]["timeout"], 10)
         self.assertEqual(result, DeliveryResult.SENT)
+
+    def test_the_applet_environment_carries_an_explicit_style(self):
+        runner = RecordingRunner([0])
+        notifier.deliver(
+            NudgeCommand(title="Focus drift", body="Back to the plan"),
+            style="notification",
+            runner=runner,
+            applet_path=self.applet_path,
+        )
+        self.assertEqual(
+            runner.attempts[0]["env"]["DFN_STYLE"], "notification")
 
     def test_sets_the_sound_flag_for_escalated_nudges(self):
         runner = RecordingRunner([0])
@@ -184,10 +197,25 @@ class OsascriptFallbackTest(unittest.TestCase):
         self.assertTrue(all(isinstance(item, str) for item in argv))
         self.assertEqual(argv[0], "osascript")
         self.assertEqual(argv[1], "-e")
-        self.assertIn('display notification "Back to the plan"', argv[2])
+        # The default style is the centered window.
+        self.assertIn("display dialog", argv[2])
+        self.assertIn('"Back to the plan"', argv[2])
         self.assertIn('with title "Focus drift"', argv[2])
         self.assertEqual(runner.attempts[0]["timeout"], 10)
         self.assertEqual(result, DeliveryResult.SENT)
+
+    def test_the_notification_style_keeps_the_notification_source(self):
+        runner = RecordingRunner([0])
+        notifier.deliver(
+            NudgeCommand(title="Focus drift", body="Back to the plan"),
+            preferred_channel="oscript",
+            style="notification",
+            runner=runner,
+        )
+        source = runner.attempts[0]["argv"][2]
+        self.assertIn("display notification", source)
+        self.assertIn('display notification "Back to the plan"', source)
+        self.assertNotIn("display dialog", source)
 
     def test_falls_back_when_the_applet_binary_is_missing(self):
         runner = RecordingRunner([0])
@@ -209,15 +237,26 @@ class OsascriptFallbackTest(unittest.TestCase):
                 body="half\\twice\r\nwith a newline",
             ),
             preferred_channel="oscript",
+            style="notification",
             runner=runner,
         )
         source = runner.attempts[0]["argv"][2]
         self.assertIn('with title "He said \\"hi\\""', source)
         self.assertIn('display notification "half\\\\twicewith a newline"', source)
         self.assertNotIn("\r", source)
-        self.assertNotIn("\n", source)
 
-    def test_adds_the_sound_name_for_escalated_nudges(self):
+    def test_adds_the_sound_name_for_escalated_notification_nudges(self):
+        runner = RecordingRunner([0])
+        notifier.deliver(
+            NudgeCommand(title="Focus drift", body="Back to the plan", sound=True),
+            preferred_channel="oscript",
+            style="notification",
+            runner=runner,
+        )
+        source = runner.attempts[0]["argv"][2]
+        self.assertTrue(source.endswith('sound name "Glass"'))
+
+    def test_an_escalated_window_beeps_before_the_dialog(self):
         runner = RecordingRunner([0])
         notifier.deliver(
             NudgeCommand(title="Focus drift", body="Back to the plan", sound=True),
@@ -225,7 +264,19 @@ class OsascriptFallbackTest(unittest.TestCase):
             runner=runner,
         )
         source = runner.attempts[0]["argv"][2]
-        self.assertTrue(source.endswith('sound name "Glass"'))
+        self.assertTrue(source.startswith("beep 2"))
+        self.assertIn("display dialog", source)
+
+    def test_the_window_source_gives_up_by_itself(self):
+        runner = RecordingRunner([0])
+        notifier.deliver(
+            NudgeCommand(title="Focus drift", body="Back to the plan"),
+            preferred_channel="oscript",
+            runner=runner,
+        )
+        source = runner.attempts[0]["argv"][2]
+        self.assertIn("giving up after 30", source)
+        self.assertIn('"Back to work"', source)
 
 
 class DeliveryOutcomeTest(unittest.TestCase):

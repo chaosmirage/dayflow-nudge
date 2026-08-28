@@ -53,8 +53,21 @@ class AppletScriptContractTest(unittest.TestCase):
         self.assertIn('"sound"', source)
         self.assertIn('sound name "Glass"', source)
 
-    def test_uses_no_dismissible_dialog(self):
-        self.assertNotIn("display dialog", read_applet_source())
+    def test_the_default_surface_is_a_centered_dialog_that_gives_up(self):
+        # The architect's standing choice: a window in the middle of the
+        # screen. It must dismiss itself, so nothing ever blocks the
+        # machine on a forgotten dialog.
+        source = read_applet_source()
+        self.assertIn("display dialog", source)
+        self.assertIn("giving up after 30", source)
+        self.assertIn('"Back to work"', source)
+
+    def test_the_notification_surface_stays_available(self):
+        # DFN_STYLE=notification selects the standard notification instead
+        # of the window.
+        source = read_applet_source()
+        self.assertIn('"notification"', source)
+        self.assertIn("display notification", source)
 
 
 class BuildScriptContractTest(unittest.TestCase):

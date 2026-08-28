@@ -38,6 +38,9 @@ OFF_TASK = "OFF_TASK"
 UNKNOWN = "UNKNOWN"
 
 STANDING_TITLE = "Distraction noticed"
+# The standing headline of every nudge surface (window or notification):
+# the architect's fixed reminder, with the actual drift carried in the body.
+FOCUS_TITLE = "Please focus on your main task"
 
 
 class NudgeAction(Enum):
@@ -185,8 +188,23 @@ def _fire(state: PersistedNudgeState, verdict: Verdict) -> NudgeDecision:
     """
     escalated = state.escalation_level >= ESCALATION_MAX_LEVEL
     action = NudgeAction.NUDGE_ESCALATED if escalated else NudgeAction.NUDGE
-    title = (getattr(verdict, "evidence", "") or "").strip() or STANDING_TITLE
-    command = NudgeCommand(title=title, body="", sound=escalated)
+    command = NudgeCommand(
+        title=FOCUS_TITLE,
+        body=_drift_detail(verdict),
+        sound=escalated)
     return NudgeDecision(
         action=action, state=state, command=command,
         cause=NudgeCause.DISTRACTION)
+
+
+def _drift_detail(verdict):
+    """Say what the drift actually is: the offending card's name, aged in
+    minutes when the detector reported its latency. Empty evidence falls
+    back to the standing line so the body is never blank."""
+    what = (getattr(verdict, "evidence", "") or "").strip() or STANDING_TITLE
+    detail = "Instead of your main task, you are currently on: " + what
+    latency = getattr(verdict, "latency", 0) or 0
+    minutes = int(latency) // 60
+    if minutes > 0:
+        detail += " ({} min)".format(minutes)
+    return detail

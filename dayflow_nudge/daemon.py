@@ -263,7 +263,8 @@ def _deliver(notifier_obj, command, config):
         return notifier_obj(command)
     from dayflow_nudge import notifier
 
-    return notifier.deliver(command, preferred_channel=config.notifier)
+    return notifier.deliver(
+        command, preferred_channel=config.notifier, style=config.style)
 
 
 def _settle_state(settle_fn, decision, result, now):

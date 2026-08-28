@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 from dayflow_nudge.daemon import CycleOutcome, run_cycle
+from dayflow_nudge.nudge_policy import FOCUS_TITLE
 from tests import fixtures
 
 NOON = datetime(2026, 8, 28, 12, 0, 0)
@@ -105,11 +106,12 @@ def _streak_policy(state, verdict, now):
     if streak < 2:
         return SimpleNamespace(action="SILENT", command=None, state=updated)
     updated = dict(updated, last_nudge_epoch=now.isoformat())
+    what = getattr(verdict, "evidence", "") or "Distraction noticed"
     return SimpleNamespace(
         action="NUDGE",
         command=SimpleNamespace(
-            title=getattr(verdict, "evidence", "") or "Distraction noticed",
-            body="",
+            title="Please focus on your main task",
+            body="Instead of your main task, you are currently on: " + what,
             sound=state.get("escalation_level", 0) >= 1,
         ),
         state=updated,
@@ -259,9 +261,9 @@ class TwoStrikeFlowTest(_CycleTestCase):
         self.assertIs(second, CycleOutcome.NUDGED)
         self.assertEqual(len(notifier.commands), 1)
         command = notifier.commands[0]
-        # the offending card's title is the whole notification
-        self.assertEqual(command.title, "Reddit scroll")
-        self.assertEqual(command.body, "")
+        # the standing focus headline carries the card's name in the body
+        self.assertEqual(command.title, FOCUS_TITLE)
+        self.assertIn("Reddit scroll", command.body)
         self.assertFalse(command.sound)
         state = self._read_state()
         self.assertEqual(state["streak"], 2)
@@ -391,8 +393,9 @@ class GoalMinutesNeverNudgeTest(_CycleTestCase):
             self.assertIs(first, CycleOutcome.SILENT)
             self.assertIs(second, CycleOutcome.NUDGED)
             self.assertEqual(len(notifier.commands), 1)
-            self.assertEqual(notifier.commands[0].title, "YouTube deep dive")
-            self.assertEqual(notifier.commands[0].body, "")
+            self.assertEqual(
+                notifier.commands[0].title, FOCUS_TITLE)
+            self.assertIn("YouTube deep dive", notifier.commands[0].body)
 
 
 class SelectionPickupTest(_CycleTestCase):
@@ -433,7 +436,8 @@ class SelectionPickupTest(_CycleTestCase):
             self.assertIs(second, CycleOutcome.NUDGED)
             self.assertEqual(
                 [command.title for command in notifier.commands],
-                ["Feed spiral"])
+                [FOCUS_TITLE])
+            self.assertIn("Feed spiral", notifier.commands[0].body)
 
             # The owner selects YouTube for the day; the same card, judged
             # on the immediately following cycle, is now on task.
@@ -460,7 +464,8 @@ class SelectionPickupTest(_CycleTestCase):
             self.assertIs(fifth, CycleOutcome.NUDGED)
             self.assertEqual(
                 [command.title for command in notifier.commands],
-                ["Feed spiral", "Video rabbit hole"])
+                [FOCUS_TITLE, FOCUS_TITLE])
+            self.assertIn("Video rabbit hole", notifier.commands[1].body)
 
 
 class FocusOnlySelectionTest(_CycleTestCase):

@@ -5,10 +5,11 @@ A per-user macOS daemon that nudges you when Dayflow says you drifted.
 ## What it is
 
 dayflow-nudge is a small Python 3 daemon (standard library only) that runs as
-a per-user LaunchAgent. It watches the timeline Dayflow records and posts a
-macOS notification when you drift into one of the distraction categories you
-selected for the day in Dayflow. It never writes to Dayflow: the Dayflow
-database is opened strictly read-only.
+a per-user LaunchAgent. It watches the timeline Dayflow records and shows a
+centered focus window -- or, if you prefer, a macOS notification -- when you
+drift into one of the distraction categories you selected for the day in
+Dayflow. It never writes to Dayflow: the Dayflow database is opened strictly
+read-only.
 
 ## Quick start
 
@@ -46,8 +47,12 @@ Every 60 seconds the daemon:
    at most one nudge per 15 minutes, nothing during quiet hours
    23:00-09:00; the first nudge is silent, a repeat nudge adds a sound.
 6. Delivers through the compiled DayflowNudge.app poster and persists its
-   small state file. The notification is title-only: the offending card's
-   own name is the whole message.
+   small state file. The default surface is a window in the middle of the
+   screen: the headline "Please focus on your main task" and the line
+   "Instead of your main task, you are currently on: <card> (N min)". The
+   window dismisses itself after 30 seconds (button: "Back to work"); a
+   repeat nudge adds a beep. DFN_STYLE=notification switches to standard
+   macOS notifications instead.
 
 The daily distraction-limit minutes you set in Dayflow no longer produce notifications;
 only the category trigger above nudges.
@@ -76,10 +81,11 @@ DayflowNudge.app poster with osacompile, installs
 launchd (RunAtLoad + KeepAlive, so it starts at login and restarts if
 killed). Re-running it replaces a running agent cleanly.
 
-## Work Focus setup (MANDATORY)
+## Work Focus setup (needed for the notification surface)
 
-Work Focus silences notifications from apps that are not allowlisted, so
-without this step you will never see a nudge. Do it right after installing:
+The window surface is a real dialog, not a notification, so Work Focus
+cannot silence it. The notification surface (DFN_STYLE=notification) IS
+filtered by Focus, so if you plan to use it, allowlist the poster once:
 
     System Settings -> Focus -> Work -> Allowed Notifications -> Apps -> DayflowNudge
 
@@ -102,6 +108,10 @@ registers the agent with the new environment.
                          caveat below).
     DFN_POLL_SECONDS=60  Poll interval in seconds. Malformed values fall
                          back to 60.
+    DFN_STYLE=window     Nudge surface. "window" (the default) shows the
+                         centered self-dismissing dialog; "notification"
+                         shows a standard macOS notification. Malformed
+                         values fall back to the window.
 
 ## Tests
 

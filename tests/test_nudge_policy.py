@@ -23,9 +23,11 @@ import unittest
 from dayflow_nudge.models import DetectionState, PersistedNudgeState, Verdict
 from dayflow_nudge.nudge_policy import (
     COOLDOWN_MINUTES,
+    FOCUS_TITLE,
     NUDGE_STRIKES_REQUIRED,
     NudgeAction,
     NudgeCause,
+    STANDING_TITLE,
     confirm_delivery,
     decide,
     should_suppress_for_kill_switch,
@@ -40,8 +42,10 @@ def fresh_state(**changes):
     return dataclasses.replace(PersistedNudgeState(), **changes)
 
 
-def off_task(evidence="News feed"):
-    return Verdict(state=DetectionState.OFF_TASK, off_task=True, evidence=evidence)
+def off_task(evidence="News feed", latency=0):
+    return Verdict(
+        state=DetectionState.OFF_TASK, off_task=True,
+        evidence=evidence, latency=latency)
 
 
 def on_task():
@@ -236,19 +240,26 @@ class TitleOnlyNotificationTest(unittest.TestCase):
     degenerate empty card can never produce an invisible notification.
     """
 
-    def test_the_card_title_is_the_headline_and_the_body_stays_empty(self):
+    def test_the_focus_headline_names_the_drift_in_the_body(self):
         decision = decide(
             fresh_state(streak=NUDGE_STRIKES_REQUIRED - 1),
             off_task(evidence="Reddit scroll"), MIDDAY)
-        self.assertEqual(decision.command.title, "Reddit scroll")
-        self.assertEqual(decision.command.body, "")
+        self.assertEqual(decision.command.title, FOCUS_TITLE)
+        self.assertIn("Reddit scroll", decision.command.body)
+        self.assertIn("main task", decision.command.body)
 
-    def test_a_title_that_strips_to_empty_falls_back_to_the_standing_line(self):
+    def test_the_body_ages_the_drift_in_minutes_when_latency_is_known(self):
+        decision = decide(
+            fresh_state(streak=NUDGE_STRIKES_REQUIRED - 1),
+            off_task(evidence="Reddit scroll", latency=14 * 60), MIDDAY)
+        self.assertIn("(14 min)", decision.command.body)
+
+    def test_evidence_that_strips_to_empty_falls_back_to_the_standing_line(self):
         decision = decide(
             fresh_state(streak=NUDGE_STRIKES_REQUIRED - 1),
             off_task(evidence="   "), MIDDAY)
-        self.assertEqual(decision.command.title, "Distraction noticed")
-        self.assertEqual(decision.command.body, "")
+        self.assertEqual(decision.command.title, FOCUS_TITLE)
+        self.assertIn(STANDING_TITLE, decision.command.body)
 
     def test_the_decision_core_exposes_the_kill_switch(self):
         self.assertTrue(should_suppress_for_kill_switch({"DFN_DISABLE": "1"}))
