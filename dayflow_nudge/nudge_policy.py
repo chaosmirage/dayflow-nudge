@@ -200,11 +200,11 @@ def _fire(state: PersistedNudgeState, verdict: Verdict) -> NudgeDecision:
 def _drift_detail(verdict):
     """Say what the drift actually is: the offending card's name, aged in
     minutes when the detector reported its latency. Empty evidence falls
-    back to the standing line so the body is never blank."""
+    back to the standing line so the body is never blank. The fixed
+    headline carries the reminder; the body states the drift itself."""
     what = (getattr(verdict, "evidence", "") or "").strip() or STANDING_TITLE
-    detail = "Instead of your main task, you are currently on: " + what
     latency = getattr(verdict, "latency", 0) or 0
     minutes = int(latency) // 60
     if minutes > 0:
-        detail += " ({} min)".format(minutes)
-    return detail
+        return "{} ({} min)".format(what, minutes)
+    return what

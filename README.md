@@ -48,11 +48,11 @@ Every 60 seconds the daemon:
    23:00-09:00; the first nudge is silent, a repeat nudge adds a sound.
 6. Delivers through the compiled DayflowNudge.app poster and persists its
    small state file. The default surface is a window in the middle of the
-   screen: the headline "Please focus on your main task" and the line
-   "Instead of your main task, you are currently on: <card> (N min)". The
-   window dismisses itself after 30 seconds (button: "Back to work"); a
-   repeat nudge adds a beep. DFN_STYLE=notification switches to standard
-   macOS notifications instead.
+   screen: the headline "Please focus on your main task" and the offending
+   card's own name as the body, e.g. "Reddit scroll (14 min)". The window
+   dismisses itself after 30 seconds (button: "Back to work"); a repeat
+   nudge adds a beep. DFN_STYLE=notification switches to standard macOS
+   notifications instead.
 
 The daily distraction-limit minutes you set in Dayflow no longer produce notifications;
 only the category trigger above nudges.

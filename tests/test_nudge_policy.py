@@ -245,14 +245,13 @@ class TitleOnlyNotificationTest(unittest.TestCase):
             fresh_state(streak=NUDGE_STRIKES_REQUIRED - 1),
             off_task(evidence="Reddit scroll"), MIDDAY)
         self.assertEqual(decision.command.title, FOCUS_TITLE)
-        self.assertIn("Reddit scroll", decision.command.body)
-        self.assertIn("main task", decision.command.body)
+        self.assertEqual(decision.command.body, "Reddit scroll")
 
     def test_the_body_ages_the_drift_in_minutes_when_latency_is_known(self):
         decision = decide(
             fresh_state(streak=NUDGE_STRIKES_REQUIRED - 1),
             off_task(evidence="Reddit scroll", latency=14 * 60), MIDDAY)
-        self.assertIn("(14 min)", decision.command.body)
+        self.assertEqual(decision.command.body, "Reddit scroll (14 min)")
 
     def test_evidence_that_strips_to_empty_falls_back_to_the_standing_line(self):
         decision = decide(

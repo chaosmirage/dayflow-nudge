@@ -111,7 +111,7 @@ def _streak_policy(state, verdict, now):
         action="NUDGE",
         command=SimpleNamespace(
             title="Please focus on your main task",
-            body="Instead of your main task, you are currently on: " + what,
+            body=what,
             sound=state.get("escalation_level", 0) >= 1,
         ),
         state=updated,
