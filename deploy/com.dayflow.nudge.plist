@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Per-user LaunchAgent for the dayflow-nudge daemon.
+  Installed by deploy/install.sh into ~/Library/LaunchAgents/.
+  Every path below points into the owned install dir:
+  ~/Library/Application Support/dayflow-nudge/
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.dayflow.nudge</string>
+
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/bin/python3</string>
+		<string>-m</string>
+		<string>dayflow_nudge</string>
+	</array>
+
+	<key>RunAtLoad</key>
+	<true/>
+
+	<key>KeepAlive</key>
+	<true/>
+
+	<key>WorkingDirectory</key>
+	<string>/Users/adel/Library/Application Support/dayflow-nudge</string>
+
+	<key>StandardOutPath</key>
+	<string>/Users/adel/Library/Application Support/dayflow-nudge/logs/daemon.out.log</string>
+
+	<key>StandardErrorPath</key>
+	<string>/Users/adel/Library/Application Support/dayflow-nudge/logs/daemon.err.log</string>
+
+	<key>EnvironmentVariables</key>
+	<dict>
+		<!--
+		Optional DFN_* overrides; the daemon re-reads them every cycle.
+		Uncomment an entry, then re-run deploy/install.sh so launchd
+		registers the agent with the new environment.
+		<key>DFN_POLL_SECONDS</key>
+		<string>60</string>
+		<key>DFN_NOTIFIER</key>
+		<string>applet</string>
+		-->
+	</dict>
+</dict>
+</plist>
