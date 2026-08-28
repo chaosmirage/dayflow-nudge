@@ -275,7 +275,7 @@ class OsascriptFallbackTest(unittest.TestCase):
             runner=runner,
         )
         source = runner.attempts[0]["argv"][2]
-        self.assertIn("giving up after 30", source)
+        self.assertIn("giving up after 5", source)
         self.assertIn('"Back to work"', source)
 
 
