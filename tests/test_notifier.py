@@ -109,6 +109,10 @@ class AppletChannelTest(unittest.TestCase):
         os.makedirs(os.path.dirname(self.applet_path))
         with open(self.applet_path, "w", encoding="utf-8") as handle:
             handle.write("#!stub\n")
+        # No styled window poster here: these tests exercise the applet
+        # dialog fallback, so the window path must point nowhere real.
+        self.missing_window = os.path.join(
+            tempfile.gettempdir(), "dayflow-nudge-no-such-window-poster")
 
     def test_runs_the_applet_binary_with_the_payload_in_the_environment(self):
         runner = RecordingRunner([0])
@@ -116,6 +120,7 @@ class AppletChannelTest(unittest.TestCase):
             NudgeCommand(title="Focus drift", body="Back to the plan"),
             runner=runner,
             applet_path=self.applet_path,
+            window_path=self.missing_window,
         )
         self.assertEqual(len(runner.attempts), 1)
         argv = runner.attempts[0]["argv"]
@@ -151,6 +156,7 @@ class AppletChannelTest(unittest.TestCase):
             NudgeCommand(title="Focus drift", body="Back to the plan", sound=True),
             runner=runner,
             applet_path=self.applet_path,
+            window_path=self.missing_window,
         )
         self.assertEqual(runner.attempts[0]["env"]["DFN_SOUND"], "sound")
 
@@ -163,6 +169,7 @@ class AppletChannelTest(unittest.TestCase):
             ),
             runner=runner,
             applet_path=self.applet_path,
+            window_path=self.missing_window,
         )
         env = runner.attempts[0]["env"]
         self.assertEqual(env["DFN_TITLE"], "Distractionnow " + "x" * 65)
@@ -174,12 +181,73 @@ class AppletChannelTest(unittest.TestCase):
             NudgeCommand(title="Reddit scroll", body=""),
             runner=runner,
             applet_path=self.applet_path,
+            window_path=self.missing_window,
         )
         # the empty body is delivered as an explicit empty variable, never
         # collapsed away, so the notification shows the card name only
         env = runner.attempts[0]["env"]
         self.assertEqual(env["DFN_TITLE"], "Reddit scroll")
         self.assertEqual(env["DFN_BODY"], "")
+
+
+class WindowPosterTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        base = os.path.join(tmp.name, "Library")
+        self.applet_path = os.path.join(
+            base, "DayflowNudge.app", "Contents", "MacOS", "applet")
+        self.window_path = os.path.join(
+            base, "DayflowNudgeWindow.app", "Contents", "MacOS",
+            "DayflowNudgeWindow")
+        for path in (self.applet_path, self.window_path):
+            os.makedirs(os.path.dirname(path))
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("#!stub\n")
+
+    def test_the_window_style_prefers_the_styled_poster(self):
+        runner = RecordingRunner([0])
+        result = notifier.deliver(
+            NudgeCommand(title="Focus drift", body="Back to the plan"),
+            runner=runner,
+            applet_path=self.applet_path,
+            window_path=self.window_path,
+        )
+        argv = runner.attempts[0]["argv"]
+        env = runner.attempts[0]["env"]
+        self.assertEqual(argv, [self.window_path])
+        self.assertEqual(env["DFN_TITLE"], "Focus drift")
+        self.assertEqual(env["DFN_BODY"], "Back to the plan")
+        self.assertEqual(env["DFN_STYLE"], "window")
+        self.assertEqual(result, DeliveryResult.SENT)
+
+    def test_the_notification_style_uses_the_applet(self):
+        runner = RecordingRunner([0])
+        notifier.deliver(
+            NudgeCommand(title="Focus drift", body="Back to the plan"),
+            style="notification",
+            runner=runner,
+            applet_path=self.applet_path,
+            window_path=self.window_path,
+        )
+        self.assertEqual(
+            runner.attempts[0]["argv"], [self.applet_path])
+        self.assertEqual(
+            runner.attempts[0]["env"]["DFN_STYLE"], "notification")
+
+    def test_a_missing_window_poster_falls_back_to_the_applet_dialog(self):
+        missing_window = os.path.join(
+            tempfile.gettempdir(), "dayflow-nudge-no-such-window-poster")
+        runner = RecordingRunner([0])
+        notifier.deliver(
+            NudgeCommand(title="Focus drift", body="Back to the plan"),
+            runner=runner,
+            applet_path=self.applet_path,
+            window_path=missing_window,
+        )
+        self.assertEqual(runner.attempts[0]["argv"], [self.applet_path])
+        self.assertEqual(
+            runner.attempts[0]["env"]["DFN_STYLE"], "window")
 
 
 class OsascriptFallbackTest(unittest.TestCase):
@@ -291,6 +359,8 @@ class DeliveryOutcomeTest(unittest.TestCase):
             NudgeCommand(title="Focus drift", body="Back to the plan"),
             runner=runner,
             applet_path=self._applet_path(),
+            window_path=os.path.join(
+                tempfile.gettempdir(), "dayflow-nudge-no-such-window-poster"),
         )
 
     def test_zero_exit_status_reports_sent_with_one_log_line(self):

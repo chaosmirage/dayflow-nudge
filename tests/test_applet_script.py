@@ -8,6 +8,8 @@ import unittest
 
 APPLET_SOURCE_PATH = os.path.abspath(os.path.join(
     os.path.dirname(__file__), os.pardir, "scripts", "applet.applescript"))
+WINDOW_SOURCE_PATH = os.path.abspath(os.path.join(
+    os.path.dirname(__file__), os.pardir, "scripts", "window.swift"))
 BUILD_SCRIPT_PATH = os.path.abspath(os.path.join(
     os.path.dirname(__file__), os.pardir, "scripts", "build_applet.sh"))
 
@@ -88,6 +90,33 @@ class BuildScriptContractTest(unittest.TestCase):
         script = read_build_script()
         self.assertIn("plutil", script)
         self.assertIn("codesign", script)
+
+    def test_builds_the_styled_window_poster_when_swiftc_exists(self):
+        script = read_build_script()
+        self.assertIn("swiftc", script)
+        self.assertIn("window.swift", script)
+        # A machine without the compiler must still install cleanly.
+        self.assertIn("command -v swiftc", script)
+
+
+class WindowPosterContractTest(unittest.TestCase):
+    def read_window_source(self):
+        with open(WINDOW_SOURCE_PATH, "r", encoding="utf-8") as handle:
+            return handle.read()
+
+    def test_the_window_source_is_committed(self):
+        self.assertTrue(os.path.isfile(WINDOW_SOURCE_PATH))
+
+    def test_the_panel_never_steals_keyboard_focus(self):
+        self.assertIn("nonactivatingPanel", self.read_window_source())
+
+    def test_the_card_closes_itself(self):
+        self.assertIn("GIVE_UP_SECONDS", self.read_window_source())
+
+    def test_reads_the_payload_from_the_environment(self):
+        source = self.read_window_source()
+        self.assertIn('env["DFN_TITLE"]', source)
+        self.assertIn('env["DFN_BODY"]', source)
 
 
 if __name__ == "__main__":

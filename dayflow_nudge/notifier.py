@@ -17,6 +17,7 @@ TITLE_CAP = 80
 BODY_CAP = 200
 DELIVERY_TIMEOUT_SECONDS = 10
 CHANNEL_APPLET = "applet"
+CHANNEL_WINDOW = "window"
 CHANNEL_OSASCRIPT = "osascript"
 SOUND_FLAG = "sound"
 NOTIFICATION_SOUND_NAME = "Glass"
@@ -29,6 +30,9 @@ DEFAULT_OWNED_DIR = os.path.expanduser(
     "~/Library/Application Support/dayflow-nudge")
 DEFAULT_APPLET_PATH = os.path.join(
     DEFAULT_OWNED_DIR, "DayflowNudge.app", "Contents", "MacOS", "applet")
+DEFAULT_WINDOW_PATH = os.path.join(
+    DEFAULT_OWNED_DIR, "DayflowNudgeWindow.app", "Contents", "MacOS",
+    "DayflowNudgeWindow")
 
 _OSASCRIPT_COMMAND = "osascript"
 _TITLE_ENV = "DFN_TITLE"
@@ -63,53 +67,62 @@ def deliver(command: NudgeCommand, *,
             style: str = STYLE_WINDOW,
             runner=subprocess.run,
             applet_path: str = DEFAULT_APPLET_PATH,
+            window_path: str = DEFAULT_WINDOW_PATH,
             timeout: int = DELIVERY_TIMEOUT_SECONDS) -> DeliveryResult:
     """Post one nudge for ``command`` and report whether it was sent.
 
     Exactly one delivery attempt is made: a failure comes back as FAILED,
     is never retried here, and never raises into the calling cycle. Every
     outcome leaves one log line carrying the channel and the cause. The
-    style selects the surface: a centered self-dismissing window (the
-    default) or a standard notification.
+    style selects the surface: the styled centered window (the default) or
+    a standard notification. Each surface prefers its own attributable
+    poster binary and degrades step by step down to bare osascript.
     """
     title = sanitize_text(command.title, TITLE_CAP)
     body = sanitize_text(command.body, BODY_CAP)
-    channel = _select_channel(preferred_channel, applet_path)
-    argv = _build_argv(channel, applet_path, title, body, command.sound, style)
-    env = _build_env(channel, title, body, command.sound, style)
+    channel, argv, env = _poster_command(
+        preferred_channel, style, applet_path, window_path,
+        title, body, command.sound)
     sent, cause = _run_once(argv, timeout, runner, env)
     _logger.info(
         "event=delivery channel=%s ok=%s detail=%s", channel, sent, cause)
     return DeliveryResult.SENT if sent else DeliveryResult.FAILED
 
 
-def _select_channel(preferred_channel, applet_path):
-    """The attributable applet posts whenever it is preferred and present;
-    any other preference, or a missing binary, degrades to osascript."""
-    if preferred_channel == CHANNEL_APPLET and os.path.isfile(applet_path):
-        return CHANNEL_APPLET
-    return CHANNEL_OSASCRIPT
+def _poster_command(preferred_channel, style, applet_path, window_path,
+                    title, body, sound):
+    """Pick the poster for the requested surface and build its command.
+
+    Window surface: the styled SwiftUI poster when its binary exists, then
+    the applet's dialog (DFN_STYLE=window), then the osascript dialog.
+    Notification surface: the applet (DFN_STYLE=notification), then the
+    osascript notification. Poster binaries take no arguments -- the
+    payload rides the environment; only osascript composes source text."""
+    applet_available = preferred_channel == CHANNEL_APPLET and os.path.isfile(
+        applet_path)
+
+    if style == STYLE_WINDOW:
+        if applet_available and os.path.isfile(window_path):
+            return (CHANNEL_WINDOW, [window_path],
+                    _build_env(title, body, sound, style))
+        if applet_available:
+            return (CHANNEL_APPLET, [applet_path],
+                    _build_env(title, body, sound, style))
+        return (CHANNEL_OSASCRIPT,
+                [_OSASCRIPT_COMMAND, "-e",
+                 _osascript_source(title, body, sound, style)], None)
+
+    if applet_available:
+        return (CHANNEL_APPLET, [applet_path],
+                _build_env(title, body, sound, style))
+    return (CHANNEL_OSASCRIPT,
+            [_OSASCRIPT_COMMAND, "-e",
+             _osascript_source(title, body, sound, style)], None)
 
 
-def _build_argv(channel, applet_path, title, body, sound, style):
-    """Assemble the delivery command as an argv list, never a shell string.
-
-    The applet takes no arguments: on current macOS a compiled applet
-    receives no argv at all, so its payload travels through the environment
-    (see _build_env). Only the osascript fallback composes source text."""
-    if channel == CHANNEL_APPLET:
-        return [applet_path]
-    return [
-        _OSASCRIPT_COMMAND, "-e",
-        _osascript_source(title, body, sound, style)]
-
-
-def _build_env(channel, title, body, sound, style):
-    """The applet channel carries the payload as environment variables
-    (inherited environment plus the four DFN_* overrides); the osascript
-    fallback needs no overrides and inherits unchanged (None)."""
-    if channel != CHANNEL_APPLET:
-        return None
+def _build_env(title, body, sound, style):
+    """Poster binaries carry the payload as environment variables:
+    the inherited environment plus the four DFN_* overrides."""
     env = dict(os.environ)
     env[_TITLE_ENV] = title
     env[_BODY_ENV] = body
