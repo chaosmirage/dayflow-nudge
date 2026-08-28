@@ -26,6 +26,6 @@ on run
 		end if
 	else
 		if soundFlag is "sound" then beep 2
-		display dialog notifBody with title notifTitle buttons {"Back to work"} default button 1 giving up after 5 with icon caution
+		display dialog notifBody with title notifTitle buttons {"Back to work"} default button 1 giving up after 30 with icon caution
 	end if
 end run

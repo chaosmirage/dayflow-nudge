@@ -59,7 +59,7 @@ class AppletScriptContractTest(unittest.TestCase):
         # machine on a forgotten dialog.
         source = read_applet_source()
         self.assertIn("display dialog", source)
-        self.assertIn("giving up after 5", source)
+        self.assertIn("giving up after 30", source)
         self.assertIn('"Back to work"', source)
 
     def test_the_notification_surface_stays_available(self):
