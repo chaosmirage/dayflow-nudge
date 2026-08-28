@@ -60,9 +60,10 @@ python3 -m dayflow_nudge
 - kill_switch.py -- DFN_DISABLE=1 read fresh each cycle; counters are
   untouched while it is armed.
 - notifier.py -- delivery: one text boundary (sanitize_text,
-  applescript_literal), the applet argv channel with the osascript
-  fallback, shell=False, a 10-second timeout, and the typed
-  DeliveryResult.
+  applescript_literal), the applet env channel (payload in DFN_TITLE,
+  DFN_BODY, DFN_SOUND; applets receive no argv on current macOS) with
+  the osascript fallback, shell=False, a 10-second timeout, and the
+  typed DeliveryResult.
 - state_store.py -- atomic persistence of state.json (write to a
   temporary file, fsync, os.replace); the record is schema 2 with
   exactly the keys schema_version, streak, last_nudge_epoch,

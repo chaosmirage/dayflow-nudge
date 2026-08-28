@@ -55,8 +55,9 @@ class RecordingRunner:
         self.attempts = []
         self._outcomes = list(outcomes)
 
-    def __call__(self, argv, timeout=None):
-        self.attempts.append({"argv": argv, "timeout": timeout})
+    def __call__(self, argv, timeout=None, env=None):
+        self.attempts.append(
+            {"argv": argv, "timeout": timeout, "env": env})
         outcome = self._outcomes.pop(0)
         if isinstance(outcome, Exception):
             raise outcome
@@ -109,7 +110,7 @@ class AppletChannelTest(unittest.TestCase):
         with open(self.applet_path, "w", encoding="utf-8") as handle:
             handle.write("#!stub\n")
 
-    def test_runs_the_applet_binary_directly_with_argv_values(self):
+    def test_runs_the_applet_binary_with_the_payload_in_the_environment(self):
         runner = RecordingRunner([0])
         result = notifier.deliver(
             NudgeCommand(title="Focus drift", body="Back to the plan"),
@@ -118,31 +119,29 @@ class AppletChannelTest(unittest.TestCase):
         )
         self.assertEqual(len(runner.attempts), 1)
         argv = runner.attempts[0]["argv"]
-        # An argv list of plain strings cannot involve a shell by construction.
-        self.assertIsInstance(argv, list)
-        self.assertTrue(all(isinstance(item, str) for item in argv))
-        self.assertEqual(argv[0], self.applet_path)
-        # "--" ends option parsing, so a title starting with "-" stays data.
-        self.assertEqual(argv[1], "--")
-        self.assertEqual(argv[2], "Focus drift")
-        self.assertEqual(argv[3], "Back to the plan")
-        self.assertEqual(len(argv), 4)
+        # An argv list of plain strings cannot involve a shell by construction;
+        # the applet itself takes no arguments at all.
+        self.assertEqual(argv, [self.applet_path])
+        env = runner.attempts[0]["env"]
+        self.assertEqual(env["DFN_TITLE"], "Focus drift")
+        self.assertEqual(env["DFN_BODY"], "Back to the plan")
+        self.assertEqual(env["DFN_SOUND"], "")
+        # The inherited environment survives alongside the overrides.
+        for key, value in os.environ.items():
+            self.assertEqual(env.get(key), value)
         self.assertEqual(runner.attempts[0]["timeout"], 10)
         self.assertEqual(result, DeliveryResult.SENT)
 
-    def test_appends_the_sound_flag_for_escalated_nudges(self):
+    def test_sets_the_sound_flag_for_escalated_nudges(self):
         runner = RecordingRunner([0])
         notifier.deliver(
             NudgeCommand(title="Focus drift", body="Back to the plan", sound=True),
             runner=runner,
             applet_path=self.applet_path,
         )
-        self.assertEqual(
-            runner.attempts[0]["argv"],
-            [self.applet_path, "--", "Focus drift", "Back to the plan", "sound"],
-        )
+        self.assertEqual(runner.attempts[0]["env"]["DFN_SOUND"], "sound")
 
-    def test_passes_sanitized_values_to_the_command(self):
+    def test_passes_sanitized_values_through_the_environment(self):
         runner = RecordingRunner([0])
         notifier.deliver(
             NudgeCommand(
@@ -152,23 +151,22 @@ class AppletChannelTest(unittest.TestCase):
             runner=runner,
             applet_path=self.applet_path,
         )
-        argv = runner.attempts[0]["argv"]
-        self.assertEqual(argv[2], "Distractionnow " + "x" * 65)
-        self.assertEqual(argv[3], "b" * 200)
+        env = runner.attempts[0]["env"]
+        self.assertEqual(env["DFN_TITLE"], "Distractionnow " + "x" * 65)
+        self.assertEqual(env["DFN_BODY"], "b" * 200)
 
-    def test_a_title_only_command_carries_the_card_name_with_an_empty_body(self):
+    def test_a_title_only_command_carries_an_empty_body_variable(self):
         runner = RecordingRunner([0])
         notifier.deliver(
             NudgeCommand(title="Reddit scroll", body=""),
             runner=runner,
             applet_path=self.applet_path,
         )
-        # the empty body travels as its own argv value, never collapsed
-        # away, so the notification shows the card name and nothing else
-        self.assertEqual(
-            runner.attempts[0]["argv"],
-            [self.applet_path, "--", "Reddit scroll", ""],
-        )
+        # the empty body is delivered as an explicit empty variable, never
+        # collapsed away, so the notification shows the card name only
+        env = runner.attempts[0]["env"]
+        self.assertEqual(env["DFN_TITLE"], "Reddit scroll")
+        self.assertEqual(env["DFN_BODY"], "")
 
 
 class OsascriptFallbackTest(unittest.TestCase):
@@ -179,6 +177,8 @@ class OsascriptFallbackTest(unittest.TestCase):
             preferred_channel="oscript",
             runner=runner,
         )
+        # The fallback inherits the environment unchanged.
+        self.assertIsNone(runner.attempts[0]["env"])
         argv = runner.attempts[0]["argv"]
         self.assertIsInstance(argv, list)
         self.assertTrue(all(isinstance(item, str) for item in argv))

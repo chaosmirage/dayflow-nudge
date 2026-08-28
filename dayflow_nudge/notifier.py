@@ -27,7 +27,9 @@ DEFAULT_APPLET_PATH = os.path.join(
     DEFAULT_OWNED_DIR, "DayflowNudge.app", "Contents", "MacOS", "applet")
 
 _OSASCRIPT_COMMAND = "osascript"
-_ARG_END_MARKER = "--"
+_TITLE_ENV = "DFN_TITLE"
+_BODY_ENV = "DFN_BODY"
+_SOUND_ENV = "DFN_SOUND"
 _CONTROL_CATEGORY = "Cc"
 
 _logger = logging.getLogger(__name__)
@@ -66,7 +68,8 @@ def deliver(command: NudgeCommand, *,
     body = sanitize_text(command.body, BODY_CAP)
     channel = _select_channel(preferred_channel, applet_path)
     argv = _build_argv(channel, applet_path, title, body, command.sound)
-    sent, cause = _run_once(argv, timeout, runner)
+    env = _build_env(channel, title, body, command.sound)
+    sent, cause = _run_once(argv, timeout, runner, env)
     _logger.info(
         "event=delivery channel=%s ok=%s detail=%s", channel, sent, cause)
     return DeliveryResult.SENT if sent else DeliveryResult.FAILED
@@ -81,13 +84,27 @@ def _select_channel(preferred_channel, applet_path):
 
 
 def _build_argv(channel, applet_path, title, body, sound):
-    """Assemble the delivery command as an argv list, never a shell string."""
+    """Assemble the delivery command as an argv list, never a shell string.
+
+    The applet takes no arguments: on current macOS a compiled applet
+    receives no argv at all, so its payload travels through the environment
+    (see _build_env). Only the osascript fallback composes source text."""
     if channel == CHANNEL_APPLET:
-        argv = [applet_path, _ARG_END_MARKER, title, body]
-        if sound:
-            argv.append(SOUND_FLAG)
-        return argv
+        return [applet_path]
     return [_OSASCRIPT_COMMAND, "-e", _osascript_source(title, body, sound)]
+
+
+def _build_env(channel, title, body, sound):
+    """The applet channel carries the payload as environment variables
+    (inherited environment plus the three DFN_* overrides); the osascript
+    fallback needs no overrides and inherits unchanged (None)."""
+    if channel != CHANNEL_APPLET:
+        return None
+    env = dict(os.environ)
+    env[_TITLE_ENV] = title
+    env[_BODY_ENV] = body
+    env[_SOUND_ENV] = SOUND_FLAG if sound else ""
+    return env
 
 
 def _osascript_source(title, body, sound):
@@ -104,11 +121,11 @@ def _osascript_source(title, body, sound):
     return source
 
 
-def _run_once(argv, timeout, runner):
+def _run_once(argv, timeout, runner, env=None):
     """Run one delivery attempt and map it to (sent, cause); expected
     failures are reported, never raised."""
     try:
-        completed = runner(argv, timeout=timeout)
+        completed = runner(argv, timeout=timeout, env=env)
     except subprocess.TimeoutExpired:
         return False, "timeout after {}s".format(timeout)
     except OSError as error:

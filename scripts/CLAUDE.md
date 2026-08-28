@@ -22,22 +22,29 @@ Compile the poster into the owned directory (safe to re-run):
 
 ## Key pieces
 
-- applet.applescript -- the poster. argv item 1 is the title, item 2 the
-  body, item 3 the literal "sound" when the nudge escalates. It notifies
-  only; nothing needs dismissing.
-- build_applet.sh -- removes any previous bundle, then compiles with
+- applet.applescript -- the poster. The title, body, and the literal
+  "sound" flag (escalation) arrive through the DFN_TITLE, DFN_BODY, and
+  DFN_SOUND environment variables; compiled applets receive no
+  command-line arguments on current macOS. It notifies only; nothing
+  needs dismissing.
+- build_applet.sh -- removes any previous bundle, compiles with
   osacompile into ~/Library/Application Support/dayflow-nudge/
-  DayflowNudge.app. The compiled bundle stays out of the repository.
+  DayflowNudge.app, then gives the bundle a stable CFBundleIdentifier
+  (com.adel.dayflownudge -- without it the notification center never
+  registers the app), sets LSUIElement, and re-signs. The compiled
+  bundle stays out of the repository.
 
 ## How to extend safely
 
 - Change notification wording by editing the AppleScript source, then
   recompile; do not edit a compiled bundle.
-- Extend the payload by extending the argv protocol at both ends:
-  notifier.py builds the argv list and the applet reads items by
-  position, so keep every value a plain string.
+- Extend the payload by extending the environment protocol at both
+  ends: notifier.py writes the DFN_* variables and the applet reads
+  them with `system attribute`, so keep every value a plain string and
+  give every read a safe default (a raised AppleScript error would
+  surface as a dialog).
 - Keep tests/test_applet_script.py in step with the source; it pins the
-  argv protocol and the source invariants.
+  environment protocol and the source invariants.
 
 ## Conventions
 
