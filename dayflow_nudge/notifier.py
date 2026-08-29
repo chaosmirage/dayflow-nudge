@@ -66,6 +66,7 @@ def deliver(command: NudgeCommand, *,
             preferred_channel: str = CHANNEL_APPLET,
             style: str = STYLE_WINDOW,
             runner=subprocess.run,
+            launcher=subprocess.Popen,
             applet_path: str = DEFAULT_APPLET_PATH,
             window_path: str = DEFAULT_WINDOW_PATH,
             timeout: int = DELIVERY_TIMEOUT_SECONDS) -> DeliveryResult:
@@ -83,7 +84,13 @@ def deliver(command: NudgeCommand, *,
     channel, argv, env = _poster_command(
         preferred_channel, style, applet_path, window_path,
         title, body, command.sound)
-    sent, cause = _run_once(argv, timeout, runner, env)
+    if style == STYLE_WINDOW:
+        # The window surface is a live panel that stays up for its whole
+        # give-up lifetime (30 s), so waiting for the process would kill
+        # it mid-display; launch detached and judge only the spawn.
+        sent, cause = _launch_detached(argv, env, launcher)
+    else:
+        sent, cause = _run_once(argv, timeout, runner, env)
     _logger.info(
         "event=delivery channel=%s ok=%s detail=%s", channel, sent, cause)
     return DeliveryResult.SENT if sent else DeliveryResult.FAILED
@@ -157,6 +164,19 @@ def _osascript_source(title, body, sound, style):
     if sound:
         source = "beep 2" + "\n" + source
     return source
+
+
+def _launch_detached(argv, env, launcher):
+    """Spawn a poster without waiting for it; the window surface runs for
+    its whole give-up lifetime and is never killed by a delivery timeout.
+    Detached from our session so the daemon cycle never blocks on it."""
+    try:
+        launcher(argv, env=env, stdin=subprocess.DEVNULL,
+                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                 start_new_session=True)
+    except OSError as error:
+        return False, "cannot launch poster: {}".format(error)
+    return True, "spawned"
 
 
 def _run_once(argv, timeout, runner, env=None):

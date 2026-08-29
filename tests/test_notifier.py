@@ -115,19 +115,20 @@ class AppletChannelTest(unittest.TestCase):
             tempfile.gettempdir(), "dayflow-nudge-no-such-window-poster")
 
     def test_runs_the_applet_binary_with_the_payload_in_the_environment(self):
-        runner = RecordingRunner([0])
+        launcher = RecordingLauncher()
         result = notifier.deliver(
             NudgeCommand(title="Focus drift", body="Back to the plan"),
-            runner=runner,
+            runner=RecordingRunner([0]),
+            launcher=launcher,
             applet_path=self.applet_path,
             window_path=self.missing_window,
         )
-        self.assertEqual(len(runner.attempts), 1)
-        argv = runner.attempts[0]["argv"]
+        self.assertEqual(len(launcher.spawns), 1)
+        spawn = launcher.spawns[0]
         # An argv list of plain strings cannot involve a shell by construction;
         # the applet itself takes no arguments at all.
-        self.assertEqual(argv, [self.applet_path])
-        env = runner.attempts[0]["env"]
+        self.assertEqual(spawn["argv"], [self.applet_path])
+        env = spawn["env"]
         self.assertEqual(env["DFN_TITLE"], "Focus drift")
         self.assertEqual(env["DFN_BODY"], "Back to the plan")
         self.assertEqual(env["DFN_SOUND"], "")
@@ -136,7 +137,7 @@ class AppletChannelTest(unittest.TestCase):
         # The inherited environment survives alongside the overrides.
         for key, value in os.environ.items():
             self.assertEqual(env.get(key), value)
-        self.assertEqual(runner.attempts[0]["timeout"], 10)
+        self.assertTrue(spawn["kwargs"]["start_new_session"])
         self.assertEqual(result, DeliveryResult.SENT)
 
     def test_the_applet_environment_carries_an_explicit_style(self):
@@ -151,43 +152,62 @@ class AppletChannelTest(unittest.TestCase):
             runner.attempts[0]["env"]["DFN_STYLE"], "notification")
 
     def test_sets_the_sound_flag_for_escalated_nudges(self):
-        runner = RecordingRunner([0])
+        launcher = RecordingLauncher()
         notifier.deliver(
             NudgeCommand(title="Focus drift", body="Back to the plan", sound=True),
-            runner=runner,
+            runner=RecordingRunner([0]),
+            launcher=launcher,
             applet_path=self.applet_path,
             window_path=self.missing_window,
         )
-        self.assertEqual(runner.attempts[0]["env"]["DFN_SOUND"], "sound")
+        self.assertEqual(launcher.spawns[0]["env"]["DFN_SOUND"], "sound")
 
     def test_passes_sanitized_values_through_the_environment(self):
-        runner = RecordingRunner([0])
+        launcher = RecordingLauncher()
         notifier.deliver(
             NudgeCommand(
                 title="Dis\x00tract\x1fion\r\nnow " + "x" * 100,
                 body="b" * 300,
             ),
-            runner=runner,
+            runner=RecordingRunner([0]),
+            launcher=launcher,
             applet_path=self.applet_path,
             window_path=self.missing_window,
         )
-        env = runner.attempts[0]["env"]
+        env = launcher.spawns[0]["env"]
         self.assertEqual(env["DFN_TITLE"], "Distractionnow " + "x" * 65)
         self.assertEqual(env["DFN_BODY"], "b" * 200)
 
     def test_a_title_only_command_carries_an_empty_body_variable(self):
-        runner = RecordingRunner([0])
+        launcher = RecordingLauncher()
         notifier.deliver(
             NudgeCommand(title="Reddit scroll", body=""),
-            runner=runner,
+            runner=RecordingRunner([0]),
+            launcher=launcher,
             applet_path=self.applet_path,
             window_path=self.missing_window,
         )
         # the empty body is delivered as an explicit empty variable, never
         # collapsed away, so the notification shows the card name only
-        env = runner.attempts[0]["env"]
+        env = launcher.spawns[0]["env"]
         self.assertEqual(env["DFN_TITLE"], "Reddit scroll")
         self.assertEqual(env["DFN_BODY"], "")
+
+
+class RecordingLauncher:
+    """Stands in for the detached poster launcher, recording every spawn."""
+
+    def __init__(self, outcomes=()):
+        self.spawns = []
+        self._outcomes = list(outcomes)
+
+    def __call__(self, argv, env=None, **kwargs):
+        self.spawns.append({"argv": argv, "env": env, "kwargs": kwargs})
+        if self._outcomes:
+            outcome = self._outcomes.pop(0)
+            if isinstance(outcome, Exception):
+                raise outcome
+        return None
 
 
 class WindowPosterTest(unittest.TestCase):
@@ -205,71 +225,93 @@ class WindowPosterTest(unittest.TestCase):
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write("#!stub\n")
 
-    def test_the_window_style_prefers_the_styled_poster(self):
-        runner = RecordingRunner([0])
+    def test_the_window_style_spawns_the_styled_poster_detached(self):
+        # The window surface is a live panel: it must be LAUNCHED, never
+        # awaited -- waiting would kill it mid-display at the delivery
+        # timeout (incident 2026-08-29: timeout after 10s).
+        launcher = RecordingLauncher()
         result = notifier.deliver(
             NudgeCommand(title="Focus drift", body="Back to the plan"),
-            runner=runner,
+            runner=RecordingRunner([0]),
+            launcher=launcher,
             applet_path=self.applet_path,
             window_path=self.window_path,
         )
-        argv = runner.attempts[0]["argv"]
-        env = runner.attempts[0]["env"]
-        self.assertEqual(argv, [self.window_path])
-        self.assertEqual(env["DFN_TITLE"], "Focus drift")
-        self.assertEqual(env["DFN_BODY"], "Back to the plan")
-        self.assertEqual(env["DFN_STYLE"], "window")
+        self.assertEqual(len(launcher.spawns), 1)
+        spawn = launcher.spawns[0]
+        self.assertEqual(spawn["argv"], [self.window_path])
+        self.assertEqual(spawn["env"]["DFN_TITLE"], "Focus drift")
+        self.assertEqual(spawn["env"]["DFN_BODY"], "Back to the plan")
+        self.assertEqual(spawn["env"]["DFN_STYLE"], "window")
+        self.assertTrue(spawn["kwargs"]["start_new_session"])
         self.assertEqual(result, DeliveryResult.SENT)
 
     def test_the_notification_style_uses_the_applet(self):
+        launcher = RecordingLauncher()
         runner = RecordingRunner([0])
         notifier.deliver(
             NudgeCommand(title="Focus drift", body="Back to the plan"),
             style="notification",
             runner=runner,
+            launcher=launcher,
             applet_path=self.applet_path,
             window_path=self.window_path,
         )
-        self.assertEqual(
-            runner.attempts[0]["argv"], [self.applet_path])
+        self.assertEqual(launcher.spawns, [])
+        self.assertEqual(runner.attempts[0]["argv"], [self.applet_path])
         self.assertEqual(
             runner.attempts[0]["env"]["DFN_STYLE"], "notification")
 
     def test_a_missing_window_poster_falls_back_to_the_applet_dialog(self):
+        # The fallback dialog is also a live surface: spawned detached.
         missing_window = os.path.join(
             tempfile.gettempdir(), "dayflow-nudge-no-such-window-poster")
-        runner = RecordingRunner([0])
+        launcher = RecordingLauncher()
         notifier.deliver(
             NudgeCommand(title="Focus drift", body="Back to the plan"),
-            runner=runner,
+            runner=RecordingRunner([0]),
+            launcher=launcher,
             applet_path=self.applet_path,
             window_path=missing_window,
         )
-        self.assertEqual(runner.attempts[0]["argv"], [self.applet_path])
+        self.assertEqual(launcher.spawns[0]["argv"], [self.applet_path])
         self.assertEqual(
-            runner.attempts[0]["env"]["DFN_STYLE"], "window")
+            launcher.spawns[0]["env"]["DFN_STYLE"], "window")
+
+    def test_an_unlaunchable_window_poster_reports_failed(self):
+        launcher = RecordingLauncher([OSError("poster is gone")])
+        result = notifier.deliver(
+            NudgeCommand(title="Focus drift", body="Back to the plan"),
+            runner=RecordingRunner([0]),
+            launcher=launcher,
+            applet_path=self.applet_path,
+            window_path=self.window_path,
+        )
+        self.assertEqual(result, DeliveryResult.FAILED)
 
 
 class OsascriptFallbackTest(unittest.TestCase):
     def test_runs_osascript_when_it_is_the_preferred_channel(self):
-        runner = RecordingRunner([0])
+        launcher = RecordingLauncher()
         result = notifier.deliver(
             NudgeCommand(title="Focus drift", body="Back to the plan"),
             preferred_channel="oscript",
-            runner=runner,
+            runner=RecordingRunner([0]),
+            launcher=launcher,
         )
-        # The fallback inherits the environment unchanged.
-        self.assertIsNone(runner.attempts[0]["env"])
-        argv = runner.attempts[0]["argv"]
+        # The window fallback is a live dialog: spawned detached, and the
+        # fallback inherits the environment unchanged (env=None spawn).
+        self.assertEqual(len(launcher.spawns), 1)
+        self.assertIsNone(launcher.spawns[0]["env"])
+        argv = launcher.spawns[0]["argv"]
         self.assertIsInstance(argv, list)
         self.assertTrue(all(isinstance(item, str) for item in argv))
         self.assertEqual(argv[0], "osascript")
         self.assertEqual(argv[1], "-e")
-        # The default style is the centered window.
         self.assertIn("display dialog", argv[2])
         self.assertIn('"Back to the plan"', argv[2])
         self.assertIn('with title "Focus drift"', argv[2])
-        self.assertEqual(runner.attempts[0]["timeout"], 10)
+        self.assertTrue(launcher.spawns[0]["kwargs"]["start_new_session"])
         self.assertEqual(result, DeliveryResult.SENT)
 
     def test_the_notification_style_keeps_the_notification_source(self):
@@ -286,15 +328,16 @@ class OsascriptFallbackTest(unittest.TestCase):
         self.assertNotIn("display dialog", source)
 
     def test_falls_back_when_the_applet_binary_is_missing(self):
-        runner = RecordingRunner([0])
+        launcher = RecordingLauncher()
         missing = os.path.join(
             tempfile.gettempdir(), "dayflow-nudge-no-such-applet-binary")
         result = notifier.deliver(
             NudgeCommand(title="Focus drift", body="Back to the plan"),
-            runner=runner,
+            runner=RecordingRunner([0]),
+            launcher=launcher,
             applet_path=missing,
         )
-        self.assertEqual(runner.attempts[0]["argv"][0], "osascript")
+        self.assertEqual(launcher.spawns[0]["argv"][0], "osascript")
         self.assertEqual(result, DeliveryResult.SENT)
 
     def test_assembles_source_only_from_escaped_literals(self):
@@ -325,24 +368,26 @@ class OsascriptFallbackTest(unittest.TestCase):
         self.assertTrue(source.endswith('sound name "Glass"'))
 
     def test_an_escalated_window_beeps_before_the_dialog(self):
-        runner = RecordingRunner([0])
+        launcher = RecordingLauncher()
         notifier.deliver(
             NudgeCommand(title="Focus drift", body="Back to the plan", sound=True),
             preferred_channel="oscript",
-            runner=runner,
+            runner=RecordingRunner([0]),
+            launcher=launcher,
         )
-        source = runner.attempts[0]["argv"][2]
+        source = launcher.spawns[0]["argv"][2]
         self.assertTrue(source.startswith("beep 2"))
         self.assertIn("display dialog", source)
 
     def test_the_window_source_gives_up_by_itself(self):
-        runner = RecordingRunner([0])
+        launcher = RecordingLauncher()
         notifier.deliver(
             NudgeCommand(title="Focus drift", body="Back to the plan"),
             preferred_channel="oscript",
-            runner=runner,
+            runner=RecordingRunner([0]),
+            launcher=launcher,
         )
-        source = runner.attempts[0]["argv"][2]
+        source = launcher.spawns[0]["argv"][2]
         self.assertIn("giving up after 30", source)
         self.assertIn('"Back to work"', source)
 
@@ -357,7 +402,9 @@ class DeliveryOutcomeTest(unittest.TestCase):
     def _deliver(self, runner):
         return notifier.deliver(
             NudgeCommand(title="Focus drift", body="Back to the plan"),
+            style="notification",
             runner=runner,
+            launcher=RecordingLauncher(),
             applet_path=self._applet_path(),
             window_path=os.path.join(
                 tempfile.gettempdir(), "dayflow-nudge-no-such-window-poster"),
