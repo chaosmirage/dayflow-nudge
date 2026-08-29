@@ -24,7 +24,7 @@ VARIANT_ID = "distraction"
 
 DISTRACTION_TOKEN = "distraction"
 
-ACTIVE_WINDOW_MINUTES = 15
+ACTIVE_WINDOW_MINUTES = 25
 
 
 def is_distraction_category(category):

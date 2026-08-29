@@ -354,8 +354,25 @@ class ActiveWindowTests(unittest.TestCase):
 class PinnedContract(unittest.TestCase):
     """Published tuning values; a silent change must fail the suite."""
 
+    def test_a_card_that_just_landed_after_pipeline_lag_still_counts(self):
+        # Production lag scenario (incident 2026-08-29): a 15-minute batch
+        # closes, then ~3 minutes of transcription pass before the card
+        # exists. At landing its start is already 18 minutes old -- the
+        # active window must still see it, or the detector is blind to
+        # every real distraction card (the window was 15 and never fired).
+        card = card_at("Distraction", started_seconds_before=18 * 60,
+                       duration_seconds=15 * 60, title="Reddit scroll")
+        verdict = DistractionDetector().detect(observe(card), models.PersistedNudgeState())
+        self.assertTrue(verdict.off_task)
+
+    def test_the_active_window_exceeds_batch_length_plus_processing(self):
+        # The invariant the incident taught: batch windows are 15 minutes
+        # and processing adds minutes, so a window at or below 15 can never
+        # see a freshly landed card.
+        self.assertGreater(ACTIVE_WINDOW_MINUTES, 15)
+
     def test_active_window_is_pinned_at_fifteen_minutes(self):
-        self.assertEqual(ACTIVE_WINDOW_MINUTES, 15)
+        self.assertEqual(ACTIVE_WINDOW_MINUTES, 25)
 
 
 class RegistryTests(unittest.TestCase):
