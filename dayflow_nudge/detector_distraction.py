@@ -72,8 +72,9 @@ def _category_matcher(selected):
 class DistractionDetector(Detector):
     """Classify the active window from the newest card inside it.
 
-    The verdict reflects the card with the latest start inside the
-    active window, picked and judged by the same effective predicate, so
+    The verdict reflects the card with the latest end inside the
+    window (the freshest evidence), picked and judged by the same
+    effective predicate, so
     a boundary tie can never be preferred by one rule and labeled by
     another. When no card qualifies -- nothing recent, no clock reading,
     or only cards that cannot be placed -- the verdict is UNKNOWN, which
@@ -102,12 +103,17 @@ class DistractionDetector(Detector):
 def _newest_card_in_active_window(cards, observed_at, matches):
     """Return the deciding card, or None when the window is unreadable.
 
-    A card counts when it started inside the active window; among those,
-    the latest start wins and a tie between a distraction card and an
-    on-task card resolves toward on-task, so a boundary tie never
-    produces a false accusation. The same predicate that will label the
-    deciding card ranks the candidates, so the window cannot be won by a
-    card the day's rule calls innocent.
+    A card counts when its LAST KNOWN ACTIVITY falls inside the window:
+    membership is judged by end_ts, not start_ts, because the card
+    generator merges contiguous activity into long cards whose start is
+    old by construction -- a start-based window is structurally blind to
+    exactly those long distractions (incident 2026-08-29: a 30-minute
+    merged card was invisible forever). Among cards in the window, the
+    latest end wins (the freshest evidence about the user); a tie between
+    a distraction card and an on-task card resolves toward on-task, so a
+    boundary tie never produces a false accusation. The same predicate
+    that will label the deciding card ranks the candidates, so the
+    window cannot be won by a card the day's rule calls innocent.
     """
     if observed_at is None:
         return None
@@ -116,10 +122,10 @@ def _newest_card_in_active_window(cards, observed_at, matches):
     newest = None
     newest_rank = None
     for card in cards:
-        started = card.start_ts
-        if started is None or started < window_start or started > observed_at:
+        ended = card.end_ts
+        if ended is None or ended < window_start or ended > observed_at:
             continue
-        rank = (started, 0 if matches(card.category) else 1)
+        rank = (ended, 0 if matches(card.category) else 1)
         if newest_rank is None or rank > newest_rank:
             newest = card
             newest_rank = rank

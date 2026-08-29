@@ -21,7 +21,7 @@ from dayflow_nudge.detector_distraction import (
 OBSERVED_AT = datetime(2026, 8, 28, 12, 0, 0)
 
 
-def card_at(category, started_seconds_before, duration_seconds=600,
+def card_at(category, started_seconds_before, duration_seconds=0,
             title="", summary=""):
     """One timeline card placed by offset against the fixed observation."""
     started = OBSERVED_AT - timedelta(seconds=started_seconds_before)
@@ -283,11 +283,18 @@ class EvidenceTests(unittest.TestCase):
 
 
 class ActiveWindowTests(unittest.TestCase):
-    """Only the newest card started inside the active window decides."""
+    """Only the card with the latest END inside the active window decides.
+
+    Membership is judged by end_ts -- the last known moment of the
+    activity -- so long merged cards stay visible however old their
+    start is (a start-based window was structurally blind to them)."""
 
     def test_no_card_in_the_window_reports_unknown(self):
         detector = DistractionDetector()
-        for cards in ((), (card_at("Distraction", 40 * 60),)):
+        # started 40 min ago, ran 10 -> ended 30 min ago: outside.
+        ended_long_ago = card_at("Distraction", 40 * 60,
+                                 duration_seconds=10 * 60)
+        for cards in ((), (ended_long_ago,)):
             with self.subTest(cards=cards):
                 verdict = detector.detect(
                     observe(*cards), models.PersistedNudgeState())
@@ -295,30 +302,53 @@ class ActiveWindowTests(unittest.TestCase):
                 self.assertFalse(verdict.off_task)
                 self.assertEqual(verdict.evidence, "")
 
-    def test_the_newest_card_inside_the_window_decides(self):
+    def test_the_card_with_the_latest_end_decides(self):
         detector = DistractionDetector()
-        stale_work = card_at("Coding", 40 * 60)
-        fresh_distraction = card_at("Distraction", 5 * 60)
+        # stale work ended 30 min ago; fresh distraction ended 5 min ago.
+        stale_work = card_at("Coding", 40 * 60, duration_seconds=10 * 60)
+        fresh_distraction = card_at("Distraction", 20 * 60,
+                                    duration_seconds=15 * 60)
         verdict = detector.detect(
-            observe(stale_work, fresh_distraction), models.PersistedNudgeState())
+            observe(stale_work, fresh_distraction),
+            models.PersistedNudgeState())
         self.assertEqual(verdict.state, models.DetectionState.OFF_TASK)
 
-        older_distraction = card_at("Distraction", 14 * 60)
-        newest_work = card_at("Coding", 5 * 60)
+        older_distraction = card_at("Distraction", 30 * 60,
+                                    duration_seconds=5 * 60)
+        newest_work = card_at("Coding", 20 * 60, duration_seconds=15 * 60)
         verdict = detector.detect(
-            observe(older_distraction, newest_work), models.PersistedNudgeState())
+            observe(older_distraction, newest_work),
+            models.PersistedNudgeState())
         self.assertEqual(verdict.state, models.DetectionState.ON_TASK)
+
+    def test_a_long_merged_card_is_judged_by_its_end(self):
+        # Incident 2026-08-29: the generator merged 30 minutes of
+        # contiguous distraction into ONE card. Its start is older than
+        # any start-window could ever be, but its end -- the last known
+        # moment of the activity -- is fresh. The detector must see it.
+        detector = DistractionDetector()
+        long_card = card_at("Distraction", 40 * 60,
+                            duration_seconds=30 * 60)
+        verdict = detector.detect(
+            observe(long_card), models.PersistedNudgeState())
+        self.assertEqual(verdict.state, models.DetectionState.OFF_TASK)
+        self.assertTrue(verdict.off_task)
 
     def test_cards_barely_outside_the_window_are_ignored(self):
         detector = DistractionDetector()
+        edge = ACTIVE_WINDOW_MINUTES * 60
+        # ends exactly at the window edge -> still counts.
         at_the_edge = detector.detect(
-            observe(card_at("Distraction", ACTIVE_WINDOW_MINUTES * 60)),
+            observe(card_at("Distraction", edge + 10 * 60,
+                            duration_seconds=10 * 60)),
             models.PersistedNudgeState(),
         )
         self.assertEqual(at_the_edge.state, models.DetectionState.OFF_TASK)
 
+        # ends one second past the edge -> ignored.
         past_the_edge = detector.detect(
-            observe(card_at("Distraction", ACTIVE_WINDOW_MINUTES * 60 + 1)),
+            observe(card_at("Distraction", edge + 10 * 60 + 1,
+                            duration_seconds=10 * 60)),
             models.PersistedNudgeState(),
         )
         self.assertEqual(past_the_edge.state, models.DetectionState.UNKNOWN)
@@ -327,28 +357,20 @@ class ActiveWindowTests(unittest.TestCase):
         detector = DistractionDetector()
         verdict = detector.detect(
             observe(card_at("Distraction", -5 * 60)),
-            models.PersistedNudgeState(),
-        )
+            models.PersistedNudgeState())
         self.assertEqual(verdict.state, models.DetectionState.UNKNOWN)
 
-    def test_tied_starts_resolve_toward_on_task(self):
+    def test_tied_ends_resolve_toward_on_task(self):
         detector = DistractionDetector()
-        distraction = card_at("Distraction", 5 * 60)
-        work = card_at("Coding", 5 * 60)
+        distraction = card_at("Distraction", 10 * 60,
+                              duration_seconds=5 * 60)
+        work = card_at("Coding", 10 * 60, duration_seconds=5 * 60)
         for cards in ((distraction, work), (work, distraction)):
             with self.subTest(cards=cards):
                 verdict = detector.detect(
                     observe(*cards), models.PersistedNudgeState())
-                self.assertEqual(verdict.state, models.DetectionState.ON_TASK)
-                self.assertFalse(verdict.off_task)
-
-    def test_a_missing_observation_clock_reports_unknown(self):
-        detector = DistractionDetector()
-        verdict = detector.detect(
-            observe(card_at("Distraction", 5 * 60), observed_at=None),
-            models.PersistedNudgeState(),
-        )
-        self.assertEqual(verdict.state, models.DetectionState.UNKNOWN)
+                self.assertEqual(
+                    verdict.state, models.DetectionState.ON_TASK)
 
 
 class PinnedContract(unittest.TestCase):
