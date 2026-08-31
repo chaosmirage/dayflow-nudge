@@ -45,7 +45,7 @@ Every 60 seconds the daemon:
    category contains the word "Distraction" counts as off task.
 5. Applies the nudge policy: a nudge needs two consecutive off-task checks,
    at most one nudge per 15 minutes, nothing during quiet hours
-   23:00-08:00; the first nudge is silent, a repeat nudge adds a sound.
+   20:00-08:00; the first nudge is silent, a repeat nudge adds a sound.
 6. Delivers through the compiled DayflowNudge.app poster and persists its
    small state file. The default surface is a window in the middle of the
    screen: the headline "Please focus on your main task" and the offending
@@ -137,7 +137,7 @@ state.json and logs.
   distraction-category selection from Dayflow's Daily tab (the
   "Distraction" word rule applies only when nothing is selected for the
   day). It also stays silent by design when the newest timeline card is
-  older than ~25 minutes, during quiet hours (23:00-08:00), after
+  older than ~25 minutes, during quiet hours (20:00-08:00), after
   DFN_DISABLE=1, and before two consecutive off-task checks have passed.
 - Fallback attribution caveat. With DFN_NOTIFIER=oscript the notification is
   posted by osascript itself, so it carries the generic osascript identity

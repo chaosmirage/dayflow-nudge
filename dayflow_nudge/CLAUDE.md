@@ -55,7 +55,7 @@ python3 -m dayflow_nudge
   the 15-minute cooldown, then quiet hours; the distraction streak is
   the single cause that can notify, the offending card's title is the
   whole notification, and escalation advances only on verified delivery.
-- quiet_hours.py -- the pure 23:00 to 09:00 test with the
+- quiet_hours.py -- the pure 20:00 to 08:00 test with the
   midnight-crossing branch.
 - kill_switch.py -- DFN_DISABLE=1 read fresh each cycle; counters are
   untouched while it is armed.
