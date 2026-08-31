@@ -1,8 +1,8 @@
-"""The quiet-hours gate: nothing notifies between 23:00 and 09:00.
+"""The quiet-hours gate: nothing notifies between 23:00 and 08:00.
 
 The window crosses midnight, so membership is a disjunction rather than a
 range: the evening start is inclusive (23:00 itself is quiet) and the
-morning end is exclusive (09:00 itself is loud). Suppression is total,
+morning end is exclusive (08:00 itself is loud). Suppression is total,
 and nothing suppressed here is ever held back for the morning -- the
 episode keeps counting until the window opens, spending nothing.
 """
@@ -10,7 +10,7 @@ episode keeps counting until the window opens, spending nothing.
 import datetime
 
 QUIET_START = datetime.time(23, 0)
-QUIET_END = datetime.time(9, 0)
+QUIET_END = datetime.time(8, 0)
 
 
 def is_quiet(moment):

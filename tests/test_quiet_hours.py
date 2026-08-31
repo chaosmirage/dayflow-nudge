@@ -1,6 +1,6 @@
 """Behavior of the quiet-hours gate.
 
-The window runs from 23:00 to 09:00 and crosses midnight, so the boundary
+The window runs from 23:00 to 08:00 and crosses midnight, so the boundary
 instants themselves decide the rule: the evening start is inside the window,
 the morning end is outside it, and every instant between the two -- including
 the small hours after midnight -- is inside.
@@ -23,10 +23,10 @@ class QuietHoursBoundaryTest(unittest.TestCase):
         self.assertTrue(is_quiet(datetime.time(0, 30)))
 
     def test_the_minute_before_nine_is_quiet(self):
-        self.assertTrue(is_quiet(datetime.time(8, 59)))
+        self.assertTrue(is_quiet(datetime.time(7, 59)))
 
     def test_nine_am_exactly_is_loud(self):
-        self.assertFalse(is_quiet(datetime.time(9, 0)))
+        self.assertFalse(is_quiet(datetime.time(8, 0)))
 
     def test_midday_is_loud(self):
         self.assertFalse(is_quiet(datetime.time(12, 0)))
@@ -48,7 +48,7 @@ class QuietHoursClockReadingTest(unittest.TestCase):
 class QuietHoursPinningTest(unittest.TestCase):
     def test_the_window_is_pinned_to_eleven_pm_through_nine_am(self):
         self.assertEqual(QUIET_START, datetime.time(23, 0))
-        self.assertEqual(QUIET_END, datetime.time(9, 0))
+        self.assertEqual(QUIET_END, datetime.time(8, 0))
 
 
 if __name__ == "__main__":
