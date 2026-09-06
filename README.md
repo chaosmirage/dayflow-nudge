@@ -2,6 +2,12 @@
 
 A per-user macOS daemon that nudges you when [Dayflow](https://github.com/JerryZLiu/Dayflow) says you drifted.
 
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
+  <img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9%2B-blue.svg">
+  <img alt="Platform: macOS" src="https://img.shields.io/badge/platform-macOS-lightgrey">
+</p>
+
 ## What it is
 
 Dayflow shows you what your day looked like -- after the day is over.
@@ -27,8 +33,10 @@ days, a stale timeline, or a single suspicious check all end in silence.
 
 ## Quick start
 
-From a checkout of this repository, on the Mac that runs Dayflow:
+On the Mac that runs Dayflow:
 
+    git clone https://github.com/chaosmirage/dayflow-nudge
+    cd dayflow-nudge
     deploy/install.sh
     # MANDATORY next step (see the section below) or no nudge ever shows:
     #   System Settings -> Focus -> Work -> Allowed Notifications -> Apps -> DayflowNudge
@@ -43,7 +51,21 @@ passes; see How it works for the full silence conditions.
 
 ## How it works
 
-Every 60 seconds the daemon:
+Every 60 seconds the daemon looks at the newest timeline card Dayflow
+recorded and decides between a nudge and silence. The decision is strict
+by design -- the kill switch (DFN_DISABLE=1) stops every nudge instantly,
+and silence wins whenever anything is in doubt:
+
+- nothing during quiet hours (20:00-08:00 by default) or on days
+  outside the operating week (Monday-Friday by default);
+- nothing when the newest timeline card is older than ~25 minutes;
+- nothing before two consecutive off-task checks have passed, and at
+  most one nudge per 15 minutes;
+- the first nudge is silent; only a verified delivery escalates the
+  repeat nudge with a sound.
+
+<details>
+<summary>The full tick, stage by stage</summary>
 
 1. Re-reads its configuration -- the eight environment variables named
    under Configuration -- and checks the kill
@@ -79,6 +101,8 @@ only the category trigger above nudges.
 Everything it owns lives in one directory,
 ~/Library/Application Support/dayflow-nudge/ (the installed package copy,
 DayflowNudge.app, state.json, and logs/).
+
+</details>
 
 ## Tech stack
 
@@ -152,6 +176,11 @@ see the fallback caveat under Troubleshooting.
 From the repository root:
 
     python3 -m unittest discover
+
+Contributions are welcome. Keep changes standard-library only, keep new
+behavior inside the module that owns it, and make the suite green on
+both python3 and /usr/bin/python3 (3.9) before opening a PR --
+tests/test_gate_contract.py is the map of what must stay where it is.
 
 ## Roadmap
 
