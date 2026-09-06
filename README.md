@@ -4,13 +4,15 @@ A per-user macOS daemon that nudges you when [Dayflow](https://github.com/JerryZ
 
 ## What it is
 
-dayflow-nudge is a small Python 3 daemon (standard library only) that runs as
-a per-user LaunchAgent. It watches the timeline
-[Dayflow](https://github.com/JerryZLiu/Dayflow) records and shows a
-centered focus window -- or, if you prefer, a macOS notification -- when you
-drift into one of the distraction categories you selected for the day in
-Dayflow. It never writes to Dayflow: the Dayflow database is opened strictly
-read-only.
+Dayflow shows you what your day looked like -- after the day is over.
+dayflow-nudge acts while it still matters: the moment your screen drifts
+into one of the distraction categories you picked for the day in
+[Dayflow](https://github.com/JerryZLiu/Dayflow), a small window slides
+into the middle of the screen, asks you back to your main task, and
+dismisses itself -- so you lose minutes instead of the afternoon. It
+runs entirely on your Mac, opens Dayflow's database strictly read-only,
+and nudges only when the drift is confirmed: quiet hours, non-working
+days, a stale timeline, or a single suspicious check all end in silence.
 
 <p align="center">
   <img src="docs/nudge-example.png"
