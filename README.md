@@ -64,6 +64,21 @@ and silence wins whenever anything is in doubt:
 - the first nudge is silent; only a verified delivery escalates the
   repeat nudge with a sound.
 
+```mermaid
+flowchart TD
+    T["tick: every 60 s"] --> K{"DFN_DISABLE=1?"}
+    K -- "armed" --> S["stay silent"]
+    K -- "no" --> R["open Dayflow store, read-only"]
+    R --> F{"newest card younger than ~25 min?"}
+    F -- "no" --> S
+    F -- "yes" --> D{"card category in today's distraction selection?"}
+    D -- "no" --> S
+    D -- "yes" --> P{"policy: operating day? quiet hours? two checks in a row? cooldown passed?"}
+    P -- "a gate fails" --> S
+    P -- "all pass" --> N["deliver the nudge: window or notification"]
+    N --> ST["persist state"]
+```
+
 <details>
 <summary>The full tick, stage by stage</summary>
 
