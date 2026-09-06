@@ -32,16 +32,23 @@ launchctl print gui/$(id -u)/com.dayflow.nudge
 
 ## Key pieces
 
-- com.dayflow.nudge.plist -- Label com.dayflow.nudge; ProgramArguments
-  runs /usr/bin/python3 -m dayflow_nudge; RunAtLoad and KeepAlive are
-  both on; WorkingDirectory and both log paths point into the owned
-  directory ~/Library/Application Support/dayflow-nudge/ (logs/
-  daemon.out.log and logs/daemon.err.log).
+- com.dayflow.nudge.plist -- a TEMPLATE: Label com.dayflow.nudge;
+  ProgramArguments runs /usr/bin/python3 -m dayflow_nudge; RunAtLoad and
+  KeepAlive are both on; the path keys carry the @@OWNED_DIR@@ token
+  (rendered to the owned directory ~/Library/Application
+  Support/dayflow-nudge/, with logs/daemon.out.log and
+  logs/daemon.err.log under it) and EnvironmentVariables holds one
+  @@DFN_<NAME>@@ placeholder pair per published knob. The file parses
+  as a property list before substitution and ships no account paths.
 - install.sh -- creates the owned directory and its logs/, copies
   dayflow_nudge/ and scripts/ into it with rsync --delete, runs
-  scripts/build_applet.sh, installs the plist into
-  ~/Library/LaunchAgents, then boots the old agent out before
-  bootstrapping so a re-run replaces a loaded agent cleanly.
+  scripts/build_applet.sh, renders the plist template from the
+  repository-root .env (pure bash: read as data, an eight-key allowlist,
+  per-knob validation mirroring the daemon's parser, XML escaping, one
+  transcript line per decision) into ~/Library/LaunchAgents, then boots
+  the old agent out before bootstrapping so a re-run replaces a loaded
+  agent cleanly. `install.sh render <template> <env_file> <output>` is
+  the launchd-free render seam the tests drive.
 - uninstall.sh -- boots the agent out and removes the plist and the
   owned directory copy.
 
@@ -64,8 +71,8 @@ launchctl print gui/$(id -u)/com.dayflow.nudge
   derive every path from those two roots.
 - Derive the repository root from BASH_SOURCE; do not depend on the
   caller's working directory.
-- Re-run install.sh after editing the plist so launchd registers the
-  new definition.
+- Re-run install.sh after editing .env so the render delivers the new
+  values into the agent's environment.
 
 ## Constraints
 

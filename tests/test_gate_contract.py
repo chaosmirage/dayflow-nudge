@@ -18,6 +18,7 @@ skips on absence stops checking the layout the day a file goes missing.
 """
 
 import plistlib
+import re
 import unittest
 from pathlib import Path
 
@@ -58,6 +59,25 @@ SCRIPT_SOURCES = ("scripts/build_applet.sh", "scripts/applet.applescript")
 #: The per-user agent definition; it must parse as a property list with
 #: at least some definition inside.
 PLIST_SOURCE = "deploy/com.dayflow.nudge.plist"
+
+#: The published example of the configuration surface, copied to .env by
+#: whoever wants to change a knob; it may never be committed with real
+#: values because it is the template a published repository hands out.
+ENV_EXAMPLE = ".env-example"
+
+#: The eight knobs every publication surface must name identically --
+#: and no other DFN_* name (the poster payload variables DFN_TITLE,
+#: DFN_BODY, and DFN_SOUND are delivery plumbing, not user settings).
+PUBLISHED_KNOBS = (
+    "DFN_DAYS",
+    "DFN_DB_PATH",
+    "DFN_DISABLE",
+    "DFN_NOTIFIER",
+    "DFN_POLL_SECONDS",
+    "DFN_QUIET_END",
+    "DFN_QUIET_START",
+    "DFN_STYLE",
+)
 
 
 class PackageLayoutTest(unittest.TestCase):
@@ -118,6 +138,62 @@ class PackageLayoutTest(unittest.TestCase):
         self.assertTrue(
             contents,
             "{0} parses but defines nothing".format(PLIST_SOURCE))
+
+    def test_env_example_present_non_empty_and_ascii(self):
+        path = REPO_ROOT / ENV_EXAMPLE
+        self.assertTrue(
+            path.is_file(),
+            "{0} is missing; a stranger cannot configure the daemon"
+            " without it".format(ENV_EXAMPLE))
+        self.assertGreater(
+            path.stat().st_size, 0,
+            "{0} exists but is empty; the example must carry the"
+            " vocabulary".format(ENV_EXAMPLE))
+        with path.open("r", encoding="ascii") as handle:
+            contents = handle.read()
+        # every knob ships as a commented line: uncommenting is the
+        # documented mental model for changing a setting
+        lines = contents.splitlines()
+        for knob in PUBLISHED_KNOBS:
+            with self.subTest(knob=knob):
+                self.assertTrue(
+                    any(line.lstrip().startswith("#") and knob in line
+                        for line in lines),
+                    "{0} must present {1} as a commented line".format(
+                        ENV_EXAMPLE, knob))
+
+    def test_the_local_env_file_is_ignored(self):
+        lines = (REPO_ROOT / ".gitignore").read_text(encoding="ascii")
+        self.assertIn(
+            ".env",
+            lines.splitlines(),
+            "a local .env carries personal values; it must never reach"
+            " the published tree")
+
+
+class PublishedVocabularyTest(unittest.TestCase):
+    """One vocabulary, named identically on every public surface."""
+
+    SURFACES = (
+        ".env-example",
+        "deploy/install.sh",
+        "README.md",
+        "CLAUDE.md",
+    )
+
+    def _names_in(self, text):
+        return sorted(set(re.findall(r"DFN_[A-Z]+(?:_[A-Z]+)*", text)))
+
+    def test_every_publication_surface_names_exactly_the_eight_knobs(self):
+        for relative in self.SURFACES:
+            with self.subTest(surface=relative):
+                path = REPO_ROOT / relative
+                self.assertTrue(path.is_file())
+                text = path.read_text(encoding="ascii")
+                self.assertEqual(
+                    self._names_in(text), list(PUBLISHED_KNOBS),
+                    "{0} must name exactly the published knobs".format(
+                        relative))
 
 
 if __name__ == "__main__":

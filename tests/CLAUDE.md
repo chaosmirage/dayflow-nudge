@@ -44,14 +44,19 @@ python3 -m unittest tests.test_import_hygiene -v
   library nor first party; it checks itself too.
 - test_gate_contract.py -- the repository layout contract: named
   modules must exist and be non-empty, the applet source must hold its
-  invariants, the plist must parse.
+  invariants, the plist must parse, .env-example must present every
+  published knob as a commented line, .gitignore must keep the local
+  .env out of the tree, and every publication surface (.env-example,
+  deploy/install.sh, README.md, CLAUDE.md) must name exactly the eight
+  published knobs and no other DFN_* name.
 - test_deploy.py -- the LaunchAgent property list and the install
   scripts.
 - test_<module>.py per code module -- behavior lives next to the module
   it pins, and pinned constants are asserted at their design values
-  (ACTIVE_WINDOW_MINUTES == 15 in test_detector_distraction,
+  (ACTIVE_WINDOW_MINUTES == 25 in test_detector_distraction,
   COOLDOWN_MINUTES == 15 in test_nudge_policy, SCHEMA_VERSION == 2 in
-  test_state_store).
+  test_state_store, QUIET_START 20:00 and QUIET_END 08:00 and the
+  Monday-Friday DEFAULT_WEEKDAYS in test_quiet_hours).
 
 ## How to extend safely
 

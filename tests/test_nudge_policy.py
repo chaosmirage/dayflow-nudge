@@ -6,7 +6,10 @@ cycle, and confirm_delivery() applies the bookkeeping only after the
 caller reports the notification actually went out. The clock and the
 calendar are fixed constants, so every boundary below is exact.
 
-A nudge requires two consecutive off-task checks; the 15-minute cooldown
+The weekday calendar gate runs first: an excluded day is a non-operating
+day and the decision is silent with the state handed straight back --
+nothing counted, nothing broken, nothing anchored. Behind it, a nudge
+requires two consecutive off-task checks; the 15-minute cooldown
 is one window every nudge shares; the first nudge of an episode is silent
 and only the second carries sound; quiet hours suppress everything
 without spending anything -- the episode keeps counting until the window
@@ -20,6 +23,7 @@ import datetime
 import inspect
 import unittest
 
+from dayflow_nudge import quiet_hours
 from dayflow_nudge.models import DetectionState, PersistedNudgeState, Verdict
 from dayflow_nudge.nudge_policy import (
     COOLDOWN_MINUTES,
@@ -34,6 +38,11 @@ from dayflow_nudge.nudge_policy import (
 )
 
 MIDDAY = datetime.datetime(2026, 8, 28, 12, 0, 0)
+SATURDAY = datetime.datetime(2026, 8, 29, 12, 0, 0)
+SUNDAY = datetime.datetime(2026, 8, 30, 12, 0, 0)
+MONDAY = datetime.datetime(2026, 8, 31, 12, 0, 0)
+MONDAY_NIGHT = datetime.datetime(2026, 8, 31, 23, 30)
+TUESDAY_MORNING = datetime.datetime(2026, 9, 1, 9, 5)
 ONE_MINUTE = datetime.timedelta(minutes=1)
 FIVE_MINUTES = datetime.timedelta(minutes=5)
 
@@ -194,17 +203,106 @@ class QuietHoursInsideTheDecisionTest(unittest.TestCase):
         self.assertIsNone(second.state.last_nudge_epoch)
 
     def test_a_distraction_nudge_resumes_after_quiet_hours(self):
-        night = datetime.datetime(2026, 8, 28, 23, 30)
-        first = decide(fresh_state(), off_task(), night)
-        suppressed = decide(first.state, off_task(), night + ONE_MINUTE)
-        morning = datetime.datetime(2026, 8, 29, 9, 5)
-        resumed = decide(suppressed.state, off_task(), morning)
+        # the pair spans an operating day's night into the next operating
+        # day's morning, so the default Monday-Friday week keeps this a
+        # claim about quiet hours alone (an excluded night would spend no
+        # evidence and the resume would test nothing)
+        first = decide(fresh_state(), off_task(), MONDAY_NIGHT)
+        suppressed = decide(first.state, off_task(), MONDAY_NIGHT + ONE_MINUTE)
+        resumed = decide(suppressed.state, off_task(), TUESDAY_MORNING)
         self.assertIs(resumed.action, NudgeAction.NUDGE)
         # nothing was delivered overnight, so the resumed nudge is still the
         # episode's silent first
         self.assertFalse(resumed.command.sound)
         # the streak survived the night
         self.assertEqual(resumed.state.streak, 3)
+
+
+class ExcludedWeekdayTest(unittest.TestCase):
+    """The calendar gate at the top of decide: silence with zero mutation.
+
+    An excluded day is a non-operating day, so nothing is spent on it:
+    no strike counted, no episode broken, no cooldown anchored. The
+    asymmetry with quiet hours is the point -- quiet hours is an intraday
+    pause while the user is still drifting at the machine, an excluded
+    day counts no evidence at all.
+    """
+
+    def test_an_excluded_day_returns_the_state_byte_identically(self):
+        mid_episode = fresh_state(
+            streak=3, escalation_level=1, last_nudge_epoch=1000.0,
+            day_key="2026-08-29")
+        decision = decide(mid_episode, off_task(), SATURDAY)
+        self.assertIs(decision.action, NudgeAction.SILENT)
+        self.assertIsNone(decision.command)
+        self.assertEqual(decision.state, mid_episode)
+
+    def test_an_unknown_observation_on_an_excluded_day_still_breaks_nothing(self):
+        # the calendar gate sits ahead of the unknown branch, so even the
+        # episode-breaking step never runs on a non-operating day
+        mid_episode = fresh_state(streak=3, escalation_level=1)
+        decision = decide(mid_episode, unknown(), SATURDAY)
+        self.assertIs(decision.action, NudgeAction.SILENT)
+        self.assertEqual(decision.state, mid_episode)
+
+    def test_a_live_streak_fires_on_the_next_allowed_day(self):
+        friday_night = datetime.datetime(2026, 8, 28, 23, 30)
+        first = decide(fresh_state(), off_task(), friday_night)
+        suppressed = decide(first.state, off_task(), friday_night + ONE_MINUTE)
+        self.assertIs(suppressed.action, NudgeAction.SILENT)
+        # the weekend hands the state through untouched
+        saturday = decide(suppressed.state, off_task(), SATURDAY)
+        self.assertEqual(saturday.state, suppressed.state)
+        sunday = decide(saturday.state, off_task(), SUNDAY)
+        self.assertEqual(sunday.state, suppressed.state)
+        resumed = decide(sunday.state, off_task(), MONDAY)
+        self.assertIs(resumed.action, NudgeAction.NUDGE)
+        # nothing was delivered across the weekend, so the resumed nudge is
+        # still the episode's silent first
+        self.assertFalse(resumed.command.sound)
+        self.assertEqual(resumed.state.streak, 3)
+
+    def test_an_omitted_calendar_means_the_module_defaults(self):
+        with_default = decide(fresh_state(streak=1), off_task(), SATURDAY)
+        with_module = decide(
+            fresh_state(streak=1), off_task(), SATURDAY,
+            calendar=quiet_hours.DEFAULT_CALENDAR)
+        self.assertEqual(with_default.action, with_module.action)
+        self.assertEqual(with_default.state, with_module.state)
+
+    def test_a_custom_operating_set_is_honored(self):
+        weekend_only = quiet_hours.OperatingCalendar(
+            weekdays=frozenset({5, 6}),
+            quiet_start=datetime.time(20, 0),
+            quiet_end=datetime.time(8, 0))
+        monday = decide(
+            fresh_state(streak=5, escalation_level=1), off_task(), MONDAY,
+            calendar=weekend_only)
+        self.assertIs(monday.action, NudgeAction.SILENT)
+        self.assertEqual(monday.state.streak, 5)
+        self.assertEqual(monday.state.escalation_level, 1)
+        first = decide(
+            fresh_state(), off_task(), SATURDAY, calendar=weekend_only)
+        second = decide(
+            first.state, off_task(), SATURDAY + ONE_MINUTE,
+            calendar=weekend_only)
+        self.assertIs(second.action, NudgeAction.NUDGE)
+
+    def test_a_custom_intraday_quiet_window_suppresses_while_counting(self):
+        around_the_clock = quiet_hours.OperatingCalendar(
+            weekdays=frozenset({0, 1, 2, 3, 4, 5, 6}),
+            quiet_start=datetime.time(13, 0),
+            quiet_end=datetime.time(14, 0))
+        lunch = MONDAY.replace(hour=13, minute=30)
+        first = decide(fresh_state(), off_task(), lunch,
+                       calendar=around_the_clock)
+        second = decide(first.state, off_task(), lunch + ONE_MINUTE,
+                        calendar=around_the_clock)
+        self.assertIs(second.action, NudgeAction.SILENT)
+        self.assertEqual(second.state.streak, 2)
+        after = decide(second.state, off_task(), MONDAY.replace(hour=14, minute=5),
+                       calendar=around_the_clock)
+        self.assertIs(after.action, NudgeAction.NUDGE)
 
 
 class OneNudgePerCycleAndSwitchTest(unittest.TestCase):
@@ -225,10 +323,10 @@ class OneNudgePerCycleAndSwitchTest(unittest.TestCase):
     def test_decide_takes_no_limit_argument(self):
         # a limit-progress feed can only come back through the signature;
         # pinning the whole parameter list keeps the decision core
-        # single-cause
+        # single-cause, with the calendar as its only added parameter
         self.assertEqual(
             list(inspect.signature(decide).parameters),
-            ["state", "verdict", "now"],
+            ["state", "verdict", "now", "calendar"],
         )
 
 

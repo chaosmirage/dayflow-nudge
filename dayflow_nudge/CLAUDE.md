@@ -51,12 +51,19 @@ python3 -m dayflow_nudge
   day's selected distraction categories, with normalized category
   containment on the token "distraction" only as the fallback for a day
   with no selection.
-- nudge_policy.py -- the pure decision core: the two-check streak, then
-  the 15-minute cooldown, then quiet hours; the distraction streak is
-  the single cause that can notify, the offending card's title is the
-  whole notification, and escalation advances only on verified delivery.
-- quiet_hours.py -- the pure 20:00 to 08:00 test with the
-  midnight-crossing branch.
+- nudge_policy.py -- the pure decision core: the weekday calendar gate
+  first (an excluded day returns SILENT with the state untouched), then
+  the two-check streak, the 15-minute cooldown, and quiet hours at the
+  calendar's bounds; the distraction streak is the single cause that
+  can notify, every nudge headlines the fixed reminder and carries the
+  offending card's title (aged in minutes when the detector reported
+  its latency) as the body, and escalation advances only on verified
+  delivery.
+- quiet_hours.py -- the calendar module (its scope is wider than its
+  name): the quiet-hours membership test with the midnight-crossing and
+  intraday branches, the operating-weekday test, and the frozen
+  OperatingCalendar with the module defaults (20:00-08:00,
+  Monday-Friday) the config layer derives its defaults from.
 - kill_switch.py -- DFN_DISABLE=1 read fresh each cycle; counters are
   untouched while it is armed.
 - notifier.py -- delivery: one text boundary (sanitize_text,
@@ -70,8 +77,11 @@ python3 -m dayflow_nudge
   escalation_level, and day_key, and an older schema-1 file migrates by
   leaving its threshold marks behind; a guarded read falls back to
   defaults plus one warning.
-- config.py -- load_config(environ): exactly DFN_DISABLE, DFN_NOTIFIER,
-  and DFN_POLL_SECONDS, re-read every cycle.
+- config.py -- load_config(environ): the eight published knobs (DFN_DISABLE,
+  DFN_NOTIFIER, DFN_POLL_SECONDS, DFN_STYLE, DFN_DAYS, DFN_QUIET_START,
+  DFN_QUIET_END, DFN_DB_PATH), re-read every cycle; absent or empty means
+  the documented default silently, malformed means the default plus one
+  warning line, and the calendar defaults are imported from quiet_hours.
 - logging.py -- one structured line per decision or event on stderr,
   built on the standard library logging module.
 

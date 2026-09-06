@@ -97,7 +97,7 @@ def run_cycle(clock, environ, db_path, state_path, detector=None, notifier=None,
         return CycleOutcome.SILENT
 
     decided = _stage(
-        "policy", lambda: _decide(decide, state, detected.value, now))
+        "policy", lambda: _decide(decide, state, detected.value, now, config))
     if not decided.ok:
         return CycleOutcome.SILENT
     decision = decided.value
@@ -123,12 +123,16 @@ def main() -> int:
     """Boot and run forever: one tick, then one configured poll of sleep."""
     setup()
     clock = datetime.now
-    db_path = default_db_path()
     state_path = default_state_path()
     try:
         while True:
-            run_cycle(clock, os.environ, db_path, state_path)
-            time.sleep(load_config(os.environ).poll_seconds)
+            # the store location is re-derived from each cycle's
+            # configuration, so a changed value applies without a restart
+            config = load_config(os.environ)
+            run_cycle(
+                clock, os.environ,
+                config.db_path or default_db_path(), state_path)
+            time.sleep(config.poll_seconds)
     except KeyboardInterrupt:
         return 0
 
@@ -248,12 +252,20 @@ def _observation(cards, goal, now):
         return SimpleNamespace(observed_at=now, cards=tuple(cards), goal=goal)
 
 
-def _decide(decide_fn, state, verdict, now):
+def _decide(decide_fn, state, verdict, now, config):
+    """Apply the nudge policy, binding the cycle's calendar only when
+    the default policy runs: an injected decide double keeps the plain
+    three-argument contract, while the real policy receives the
+    calendar derived from this cycle's configuration."""
     if decide_fn is not None:
         return decide_fn(state, verdict, now)
-    from dayflow_nudge import nudge_policy
+    from dayflow_nudge import nudge_policy, quiet_hours
 
-    return nudge_policy.decide(state, verdict, now)
+    calendar = quiet_hours.OperatingCalendar(
+        weekdays=config.weekdays,
+        quiet_start=config.quiet_start,
+        quiet_end=config.quiet_end)
+    return nudge_policy.decide(state, verdict, now, calendar=calendar)
 
 
 def _deliver(notifier_obj, command, config):

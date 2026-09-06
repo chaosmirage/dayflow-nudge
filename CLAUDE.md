@@ -70,8 +70,12 @@ Install or remove the per-user LaunchAgent:
 
 - Use the Python 3 standard library only, and treat Python 3.9 as the
   floor: the LaunchAgent starts /usr/bin/python3.
-- Keep configuration to exactly three environment variables --
-  DFN_DISABLE, DFN_NOTIFIER, DFN_POLL_SECONDS -- read anew every cycle.
+- Keep configuration to the eight published environment variables --
+  DFN_DISABLE, DFN_NOTIFIER, DFN_POLL_SECONDS, DFN_STYLE, DFN_DAYS,
+  DFN_QUIET_START, DFN_QUIET_END, DFN_DB_PATH -- read anew every cycle.
+  .env-example and README.md enumerate them with defaults; the
+  user-editable .env is consumed only at install time by
+  deploy/install.sh, never read by the daemon.
 - Keep one test module per code module, discovered from the repository
   root with unittest alone.
 - Keep source files pure ASCII.

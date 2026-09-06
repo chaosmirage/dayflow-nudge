@@ -398,6 +398,79 @@ class GoalMinutesNeverNudgeTest(_CycleTestCase):
             self.assertIn("YouTube deep dive", notifier.commands[0].body)
 
 
+class WeekdayGateWholeTickTest(_CycleTestCase):
+    """One whole tick through the real policy on an excluded weekday.
+
+    The calendar travels the same road every knob travels -- the cycle's
+    environment -- so a weekend-only DFN_DAYS must silence a Saturday
+    tick through the real decide binding, with the persisted counters
+    handed back exactly as they were loaded, and the very same wiring
+    must still nudge on a day the set includes.
+    """
+
+    SATURDAY_NOON = datetime(2026, 8, 29, 12, 0, 0)
+
+    @staticmethod
+    def _fresh_card(now):
+        """A distraction card that ended moments before ``now``."""
+        ended = now - timedelta(minutes=5)
+        return SimpleNamespace(
+            title="Reddit scroll",
+            summary="a long scroll",
+            category="Distraction",
+            start_ts=ended - timedelta(minutes=5),
+            end_ts=ended,
+            metadata={},
+        )
+
+    def _seed_state(self, streak):
+        with open(self.state_path, "w", encoding="utf-8") as handle:
+            json.dump({
+                "schema_version": 2,
+                "streak": streak,
+                "last_nudge_epoch": None,
+                "escalation_level": 0,
+                "day_key": "2026-08-29",
+            }, handle)
+
+    def _tick(self, notifier, environ):
+        return run_cycle(
+            lambda: self.SATURDAY_NOON,
+            environ,
+            ABSENT_DB,
+            self.state_path,
+            capture=lambda db_path, now: ([self._fresh_card(now)], None),
+            notifier=notifier,
+        )
+
+    def test_an_excluded_weekday_tick_stays_silent_and_keeps_the_state(self):
+        # the default operating week is Monday through Friday, so the
+        # Saturday clock lands on an excluded day
+        self._seed_state(streak=1)
+        notifier = _RecordingNotifier()
+
+        outcome = self._tick(notifier, {})
+
+        self.assertIs(outcome, CycleOutcome.SILENT)
+        self.assertEqual(notifier.commands, [])
+        state = self._read_state()
+        self.assertEqual(state["streak"], 1)
+        self.assertEqual(state["escalation_level"], 0)
+        self.assertIsNone(state["last_nudge_epoch"])
+
+    def test_an_included_day_still_nudges_through_the_same_road(self):
+        # a weekend-only operating set makes Saturday operating, so the
+        # silence above can only come from the calendar gate itself
+        self._seed_state(streak=1)
+        notifier = _RecordingNotifier()
+
+        outcome = self._tick(notifier, {"DFN_DAYS": "sat,sun"})
+
+        self.assertIs(outcome, CycleOutcome.NUDGED)
+        self.assertEqual(len(notifier.commands), 1)
+        self.assertEqual(self._read_state()["streak"], 2)
+
+
 class SelectionPickupTest(_CycleTestCase):
     """Whole ticks over one real store as the day's selection changes.
 

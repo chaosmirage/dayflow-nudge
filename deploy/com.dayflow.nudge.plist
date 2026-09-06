@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Per-user LaunchAgent for the dayflow-nudge daemon.
-  Installed by deploy/install.sh into ~/Library/LaunchAgents/.
-  Every path below points into the owned install dir:
-  ~/Library/Application Support/dayflow-nudge/
+  Per-user LaunchAgent for the dayflow-nudge daemon: a TEMPLATE.
+  deploy/install.sh renders it at install time: @@OWNED_DIR@@ becomes
+  the owned install dir under the installing user's home, and each
+  @@DFN_<NAME>@@ placeholder becomes the validated value from the
+  user's .env or that knob's documented default. Do not hand-edit the
+  rendered copy in ~/Library/LaunchAgents; edit .env (see
+  .env-example) and re-run deploy/install.sh.
 -->
 <plist version="1.0">
 <dict>
@@ -25,25 +28,32 @@
 	<true/>
 
 	<key>WorkingDirectory</key>
-	<string>/Users/adel/Library/Application Support/dayflow-nudge</string>
+	<string>@@OWNED_DIR@@</string>
 
 	<key>StandardOutPath</key>
-	<string>/Users/adel/Library/Application Support/dayflow-nudge/logs/daemon.out.log</string>
+	<string>@@OWNED_DIR@@/logs/daemon.out.log</string>
 
 	<key>StandardErrorPath</key>
-	<string>/Users/adel/Library/Application Support/dayflow-nudge/logs/daemon.err.log</string>
+	<string>@@OWNED_DIR@@/logs/daemon.err.log</string>
 
 	<key>EnvironmentVariables</key>
 	<dict>
-		<!--
-		Optional DFN_* overrides; the daemon re-reads them every cycle.
-		Uncomment an entry, then re-run deploy/install.sh so launchd
-		registers the agent with the new environment.
-		<key>DFN_POLL_SECONDS</key>
-		<string>60</string>
+		<key>DFN_DISABLE</key>
+		<string>@@DFN_DISABLE@@</string>
 		<key>DFN_NOTIFIER</key>
-		<string>applet</string>
-		-->
+		<string>@@DFN_NOTIFIER@@</string>
+		<key>DFN_POLL_SECONDS</key>
+		<string>@@DFN_POLL_SECONDS@@</string>
+		<key>DFN_STYLE</key>
+		<string>@@DFN_STYLE@@</string>
+		<key>DFN_DAYS</key>
+		<string>@@DFN_DAYS@@</string>
+		<key>DFN_QUIET_START</key>
+		<string>@@DFN_QUIET_START@@</string>
+		<key>DFN_QUIET_END</key>
+		<string>@@DFN_QUIET_END@@</string>
+		<key>DFN_DB_PATH</key>
+		<string>@@DFN_DB_PATH@@</string>
 	</dict>
 </dict>
 </plist>

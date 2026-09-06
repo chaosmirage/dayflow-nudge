@@ -2,9 +2,13 @@
 
 decide() turns the persisted counters, one detector verdict, and the
 cycle clock into at most one notification. The gates run in a fixed
-order -- the two-strike streak confirmation, then the fifteen-minute
-cooldown window, then quiet hours -- and every gate must pass before any
-notification content exists. The distraction streak is the single cause
+order -- the weekday calendar, the two-strike streak confirmation, then
+the fifteen-minute cooldown window, then quiet hours -- and every gate
+must pass before any notification content exists. The weekday gate is
+first and spends nothing: an excluded day is a non-operating day, so
+the decision is silent with the state handed straight back, no strike
+counted, no episode broken, no cooldown anchored -- the same untouched
+shape the kill switch keeps. The distraction streak is the single cause
 that can notify; the day's goal minutes are visible upstream yet carry
 no nudge meaning. When the streak does notify, the offending card's own
 title is the whole notification -- the headline carries the card name
@@ -26,7 +30,11 @@ from enum import Enum
 
 from dayflow_nudge import kill_switch
 from dayflow_nudge.models import NudgeCommand, PersistedNudgeState, Verdict
-from dayflow_nudge.quiet_hours import is_quiet
+from dayflow_nudge.quiet_hours import (
+    DEFAULT_CALENDAR,
+    is_off_schedule,
+    is_quiet,
+)
 
 NUDGE_STRIKES_REQUIRED = 2
 COOLDOWN_MINUTES = 15
@@ -82,14 +90,27 @@ def decide(
     state: PersistedNudgeState,
     verdict: Verdict,
     now: datetime,
+    *,
+    calendar=None,
 ) -> NudgeDecision:
     """Arbitrate one cycle: at most one nudge for the distraction streak.
 
-    The streak is counted first because every later gate reads the
-    episode through it. An unknown observation silences the whole cycle
-    -- the cause may not notify on unreadable data -- and breaks the
-    consecutive chain together with the escalation memory.
+    The weekday gate runs before anything that touches state: a moment
+    on an excluded day returns SILENT with the caller's state passed
+    through untouched, so a non-operating day spends no evidence -- the
+    asymmetry with quiet hours is deliberate, since quiet hours is an
+    intraday pause while the user is still drifting at the machine.
+    Behind the gate, the streak is counted first because every later
+    gate reads the episode through it. An unknown observation silences
+    the whole cycle -- the cause may not notify on unreadable data --
+    and breaks the consecutive chain together with the escalation
+    memory. ``calendar`` defaults to the quiet-hours module defaults;
+    the daemon passes the cycle's configuration-derived calendar.
     """
+    operating_calendar = DEFAULT_CALENDAR if calendar is None else calendar
+    if is_off_schedule(now, operating_calendar.weekdays):
+        # a non-operating day: nothing observed, nothing owed, nothing spent
+        return NudgeDecision(action=NudgeAction.SILENT, state=state)
     observation = _observation_state(verdict)
     if observation == UNKNOWN:
         return NudgeDecision(action=NudgeAction.SILENT, state=_break_episode(state))
@@ -99,7 +120,8 @@ def decide(
     if _within_cooldown(counted.last_nudge_epoch, now):
         # the episode waits behind the window; it is not spent
         return NudgeDecision(action=NudgeAction.SILENT, state=counted)
-    if is_quiet(now):
+    if is_quiet(now, operating_calendar.quiet_start,
+                operating_calendar.quiet_end):
         # nothing suppressed at night is held back for the morning: the
         # episode simply keeps counting until the window opens
         return NudgeDecision(action=NudgeAction.SILENT, state=counted)
