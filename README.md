@@ -1,15 +1,27 @@
 # dayflow-nudge
 
-A per-user macOS daemon that nudges you when Dayflow says you drifted.
+A per-user macOS daemon that nudges you when [Dayflow](https://github.com/JerryZLiu/Dayflow) says you drifted.
 
 ## What it is
 
 dayflow-nudge is a small Python 3 daemon (standard library only) that runs as
-a per-user LaunchAgent. It watches the timeline Dayflow records and shows a
+a per-user LaunchAgent. It watches the timeline
+[Dayflow](https://github.com/JerryZLiu/Dayflow) records and shows a
 centered focus window -- or, if you prefer, a macOS notification -- when you
 drift into one of the distraction categories you selected for the day in
 Dayflow. It never writes to Dayflow: the Dayflow database is opened strictly
 read-only.
+
+<p align="center">
+  <img src="docs/nudge-example.png"
+       alt="The dayflow-nudge window: the headline 'Please focus on your main task' over the offending card's name 'Reddit scroll (14 min)', a yellow progress line, and a 'Back to work' button"
+       width="640">
+</p>
+<p align="center">
+  The nudge window -- the default surface, a centered card that dismisses
+  itself after 30 seconds. <code>DFN_STYLE=notification</code> posts a
+  standard macOS notification instead.
+</p>
 
 ## Quick start
 
