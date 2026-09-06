@@ -4,6 +4,7 @@ uninstall script, and the README the operator follows."""
 
 import os
 import plistlib
+import re
 import shutil
 import subprocess
 import tempfile
@@ -283,6 +284,82 @@ class InstallScriptTests(unittest.TestCase):
     def test_replaces_an_already_running_agent(self):
         # A reinstall must tolerate an agent that is not loaded yet.
         self.assertRegex(self.script, r"launchctl bootout[^\n]*\|\| true")
+
+    def test_waits_for_the_old_agent_to_leave_before_bootstrap(self):
+        # Asking launchd to tear the agent down does not mean the label
+        # is gone: removal completes later. The installer must read
+        # launchd's own report of the old label -- the read-only session
+        # probe -- between the guarded bootout and the registration, so
+        # registration waits for a removal that actually happened. The
+        # pin is the ordering, not presence: a probe spelled anywhere
+        # else in the file would not establish the sequence.
+        bootout = re.search(r"launchctl bootout[^\n]*\|\| true", self.script)
+        probe = self.script.find('launchctl print "$SESSION/$AGENT_ID"')
+        bootstrap = self.script.find("launchctl bootstrap")
+        self.assertIsNotNone(
+            bootout, "the guarded bootout must anchor the ordering")
+        self.assertNotEqual(
+            probe, -1,
+            "no session probe in the script: the installer cannot"
+            " observe the old agent leaving")
+        self.assertNotEqual(
+            bootstrap, -1, "the registration call must anchor the ordering")
+        self.assertLess(
+            bootout.start(), probe, "the probe must come after the bootout")
+        self.assertLess(
+            probe, bootstrap,
+            "the probe must come before the registration call")
+
+    def test_the_wait_is_bounded_and_fails_loudly(self):
+        # A wait for asynchronous teardown must never hang and never
+        # swallow its deadline: between the bootout and the registration
+        # the script bounds the wait on total elapsed clock time, polls
+        # at a short cadence, and lets the deadline expire into a loud
+        # nonzero abort rather than a silent fall-through.
+        bootout = re.search(r"launchctl bootout[^\n]*\|\| true", self.script)
+        bootstrap = self.script.find("launchctl bootstrap")
+        self.assertIsNotNone(bootout)
+        self.assertNotEqual(bootstrap, -1)
+        wait_block = self.script[bootout.end():bootstrap]
+        self.assertRegex(
+            wait_block, r"\$\(date \+%s\)\s*\+\s*10",
+            "the wait must bound total elapsed time by a 10 s deadline")
+        self.assertIn(
+            "sleep 0.2", wait_block,
+            "the wait must poll at the short cadence, not busy-spin")
+        self.assertRegex(
+            wait_block, r'echo "install:[^"\n]*10 s[^"\n]*"\n\s*exit 1',
+            "deadline expiry must abort with one transcript line and a"
+            " nonzero exit")
+
+    def test_verifies_the_new_agent_is_loaded(self):
+        # An accepted submission is not a loaded agent: after the one
+        # registration call the installer must observe the label present
+        # through the same read-only probe, bounded in time, and the
+        # registration call must appear exactly once so no failure path
+        # can re-submit it.
+        self.assertEqual(
+            self.script.count("launchctl bootstrap"), 1,
+            "the registration call must appear exactly once; a second"
+            " occurrence would be a retry that masks real failures")
+        bootstrap = self.script.find("launchctl bootstrap")
+        probe = 'launchctl print "$SESSION/$AGENT_ID"'
+        first = self.script.find(probe)
+        last = self.script.rfind(probe)
+        self.assertNotEqual(first, -1)
+        self.assertGreater(
+            last, bootstrap, "a probe must run after the registration call")
+        self.assertGreater(
+            last, first,
+            "the post-registration probe must be a genuinely distinct"
+            " occurrence")
+        verify_block = self.script[bootstrap + len("launchctl bootstrap"):]
+        self.assertRegex(
+            verify_block, r"\$\(date \+%s\)\s*\+\s*5\b",
+            "the presence check must be bounded at about 5 s")
+        self.assertIn(
+            "sleep 0.2", verify_block,
+            "the presence check must reuse the short poll cadence")
 
     def test_prints_the_work_focus_allowlist_step(self):
         self.assertIn("Allowed Notifications", self.script)

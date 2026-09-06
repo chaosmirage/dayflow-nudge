@@ -285,7 +285,37 @@ echo "==> Registering the agent with launchd"
 # Bootout first so a re-run replaces an already-loaded agent; a fresh
 # machine has none, so a missing service is not an error here.
 launchctl bootout "$SESSION/$AGENT_ID" 2>/dev/null || true
+
+# bootout returns once teardown is initiated, not completed; hold the
+# registration until launchd itself reports the label absent. Bounded:
+# a teardown that never finishes is a real failure, aborted loudly
+# rather than hung on.
+if launchctl print "$SESSION/$AGENT_ID" >/dev/null 2>&1; then
+    echo "install: the old agent is still tearing down; waiting for it to leave"
+    wait_left=$(( $(date +%s) + 10 ))
+    while launchctl print "$SESSION/$AGENT_ID" >/dev/null 2>&1; do
+        if [ "$(date +%s)" -ge "$wait_left" ]; then
+            echo "install: the old agent did not leave the session within 10 s; aborting"
+            exit 1
+        fi
+        sleep 0.2
+    done
+fi
+echo "install: the session reports the old agent gone"
+
 launchctl bootstrap "$SESSION" "$LAUNCH_AGENTS_DIR/$PLIST_NAME"
+
+# An accepted submission is not a loaded agent: verify the label is
+# present, bounded in time, and never re-submit -- a registration that
+# never appears is a real failure.
+verify_left=$(( $(date +%s) + 5 ))
+until launchctl print "$SESSION/$AGENT_ID" >/dev/null 2>&1; do
+    if [ "$(date +%s)" -ge "$verify_left" ]; then
+        echo "install: the agent did not appear in the session within 5 s; aborting"
+        exit 1
+    fi
+    sleep 0.2
+done
 
 cat <<'EOF'
 

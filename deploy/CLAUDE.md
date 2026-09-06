@@ -46,9 +46,11 @@ launchctl print gui/$(id -u)/com.dayflow.nudge
   repository-root .env (pure bash: read as data, an eight-key allowlist,
   per-knob validation mirroring the daemon's parser, XML escaping, one
   transcript line per decision) into ~/Library/LaunchAgents, then boots
-  the old agent out before bootstrapping so a re-run replaces a loaded
-  agent cleanly. `install.sh render <template> <env_file> <output>` is
-  the launchd-free render seam the tests drive.
+  the old agent out and waits -- bounded, so a fresh machine pays
+  nothing -- until launchd reports the old label absent, submits the
+  registration exactly once, and verifies the new label is loaded
+  before reporting success. `install.sh render <template> <env_file>
+  <output>` is the launchd-free render seam the tests drive.
 - uninstall.sh -- boots the agent out and removes the plist and the
   owned directory copy.
 
